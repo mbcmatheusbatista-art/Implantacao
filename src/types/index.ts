@@ -1,0 +1,105 @@
+export type PhoneStatus = "valid" | "invalid" | "empty";
+
+export interface PhoneNormalizationResult {
+  primary: string | null;
+  all: string[];
+  status: PhoneStatus;
+  reason?: string;
+}
+
+export interface InitialContact {
+  id: string;
+  plateOriginal: string;
+  plateNormalized: string;
+  responsibleOriginal: string;
+  matrixOriginal?: string;
+  firstName: string;
+  phoneOriginal: string;
+  phoneNormalized: string | null;
+  allPhones: string[];
+  plates: string[];
+  rowNumbers: number[];
+  validationIssues: string[];
+  alternativeNames?: string[];
+}
+
+export type EquipmentType = "S8_ECO" | "S8_ECO_G5_PLUS" | "NAO_IDENTIFICADO";
+
+export interface ConfirmedService {
+  id: string;
+  plateOriginal: string;
+  plateNormalized: string;
+  responsibleOriginal: string;
+  firstName: string;
+  phoneOriginal: string;
+  phoneNormalized: string | null;
+  fullAddress: string;
+  cityDetected: string | null;
+  stateDetected: string | null;
+  equipmentOriginal: string;
+  equipmentNormalized: EquipmentType;
+  validationIssues: string[];
+}
+
+export type TechnicianStockStatus =
+  "DISPONIVEL" | "SEM_MATERIAL" | "CONFIRMAR" | "NAO_INFORMADO" | "TEXTO_NAO_INTERPRETADO";
+
+export interface Technician {
+  id: string;
+  nameOriginal: string;
+  firstName: string;
+  phoneOriginal: string;
+  phoneNormalized: string | null;
+  allPhones: string[];
+  cityOriginal: string;
+  cityNormalized: string;
+  state: string;
+  quantityOriginal: string;
+  availableQuantity: number | null;
+  stockStatus: TechnicianStockStatus;
+  validationIssues: string[];
+}
+
+export interface Assignment {
+  serviceId: string;
+  technicianId: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  notes?: string;
+}
+
+export type FieldKey =
+  | "plate"
+  | "responsible"
+  | "phone"
+  | "matrix"
+  | "address"
+  | "equipment"
+  | "technician"
+  | "city"
+  | "state"
+  | "quantity";
+
+export interface ImportDiagnostic {
+  fileName: string;
+  sheetName?: string;
+  headerRow: number;
+  columnsFound: string[];
+  columnsMapped: Partial<Record<FieldKey, string>>;
+  columnsUnmapped: string[];
+  rowsImported: number;
+  rowsSkipped: number;
+  invalidPhones: number;
+  emptyPlates: number;
+  emptyNames: number;
+  emptyAddresses: number;
+  equipmentUnknown: number;
+  quantityUnparsed: number;
+  groupedContacts: number;
+  nameConflicts: number;
+  timestamp: number;
+}
+
+export type ImportKind = "initial" | "confirmed" | "technicians";
+
+export type ParsedRow = Record<string, string>;
