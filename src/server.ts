@@ -10,6 +10,7 @@ type ServerEntry = {
 interface RouteDistanceRequest {
   origin?: unknown;
   destination?: unknown;
+  mode?: "approximate" | "exact" | "auto";
 }
 
 function getEnvValue(env: unknown, key: string): string {
@@ -143,12 +144,23 @@ async function handleRouteDistance(request: Request, env: unknown): Promise<Resp
   const body = (await request.json()) as RouteDistanceRequest;
   const origin = typeof body.origin === "string" ? body.origin.trim() : "";
   const destination = typeof body.destination === "string" ? body.destination.trim() : "";
+  const mode = body.mode ?? "auto";
   if (!origin || !destination) return Response.json(null);
 
   const apiKey = getEnvValue(env, "GOOGLE_MAPS_API_KEY");
   const referer = getEnvValue(env, "GOOGLE_MAPS_REFERER") || "http://127.0.0.1:8080/";
 
   try {
+    if (mode === "exact") {
+      if (!apiKey) return Response.json(null);
+      const result = await computeWithGoogle(origin, destination, apiKey, referer);
+      return Response.json(result);
+    }
+    if (mode === "approximate") {
+      const fallback = await computeWithFallback(origin, destination);
+      return Response.json(fallback);
+    }
+    // mode === "auto" (legacy)
     if (apiKey) {
       const result = await computeWithGoogle(origin, destination, apiKey, referer);
       if (result) return Response.json(result);

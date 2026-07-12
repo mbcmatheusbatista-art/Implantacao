@@ -30,6 +30,7 @@ export interface ConfirmedService {
   plateOriginal: string;
   plateNormalized: string;
   responsibleOriginal: string;
+  matrizOriginal?: string;
   firstName: string;
   phoneOriginal: string;
   phoneNormalized: string | null;

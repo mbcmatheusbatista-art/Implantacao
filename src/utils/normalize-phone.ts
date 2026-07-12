@@ -10,7 +10,7 @@ const IMPORT_DEBUG = true;
 
 function debugImport(label: string, data: unknown) {
   if (!IMPORT_DEBUG) return;
-  console.log(`[IMPORT DEBUG][PHONE] ${label}`, data);
+  console.log(`[PHONE DEBUG] ${label}`, JSON.stringify(data, null, 2));
 }
 
 /**
@@ -26,7 +26,9 @@ export function extractPhoneCandidates(raw: string): string[] {
   debugImport("extract:start", { raw });
 
   // Match optional +55, optional (DDD) or DDD, then 8 or 9 digits (with optional separators).
-  const phoneRegex = /(?:\+?55[\s.-]*)?\(?\s*(\d{2})\s*\)?[\s.-]*(9?\d{4})[\s.-]*(\d{4})/g;
+  // The group (9?\s*\d{4}) allows a space between the leading "9" and the prefix digits,
+  // e.g. "(12) 9 9713-3613" where the "9" is separated from "9713" by a space.
+  const phoneRegex = /(?:\+?55[\s.-]*)?\(?\s*(\d{2})\s*\)?[\s.-]*(9?\s*\d{4})[\s.-]*(\d{4})/g;
   let m: RegExpExecArray | null;
   while ((m = phoneRegex.exec(raw)) !== null) {
     const digits = (m[1] + m[2] + m[3]).replace(/\D/g, "");
@@ -35,18 +37,22 @@ export function extractPhoneCandidates(raw: string): string[] {
     }
   }
 
-  if (candidates.length > 0) return candidates;
-
-  // Fallback: split on textual separators and parentheses.
+  // Split on textual separators and parentheses.
   const parts = raw.split(/\s*(?:\/|\bou\b|\bOU\b|\bE\b|\be\b|;|,|\||\bor\b|\(|\))\s*/i);
   for (const p of parts) {
     const digits = p.replace(/\D/g, "");
     if (digits.length >= 8 && !candidates.includes(digits)) candidates.push(digits);
   }
-  if (candidates.length === 0) {
-    const digits = raw.replace(/\D/g, "");
-    if (digits.length >= 8) candidates.push(digits);
+
+  // ALWAYS try full-digit extraction as well – this catches edge cases where
+  // the regex mis-splits the local part (e.g. "51 9972-88666" → regex would
+  // lose one digit, but full digits "51997288666" is correct).
+  const allDigits = raw.replace(/\D/g, "");
+  if (allDigits.length >= 8 && !candidates.includes(allDigits)) {
+    candidates.push(allDigits);
+    debugImport("extract:full-digits-fallback", { raw, allDigits });
   }
+
   debugImport("extract:end", { raw, candidates });
   return candidates;
 }

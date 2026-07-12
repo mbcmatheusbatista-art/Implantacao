@@ -23,11 +23,11 @@ import { buildResponsibleMessage } from "@/services/messages";
 import { buildWhatsAppUrl, copyToClipboard, openWhatsAppInReusableTab } from "@/utils/whatsapp-url";
 import type { InitialContact } from "@/types";
 
-const IMPORT_DEBUG = true;
+const CONTATOS_DEBUG = true;
 
-function debugImport(label: string, data: unknown) {
-  if (!IMPORT_DEBUG) return;
-  console.log(`[IMPORT DEBUG][INITIAL PAGE] ${label}`, data);
+function debugContatos(label: string, data: unknown) {
+  if (!CONTATOS_DEBUG) return;
+  console.log(`[CONTATOS DEBUG] ${label}`, JSON.stringify(data, null, 2));
 }
 
 export const Route = createFileRoute("/contatos-iniciais")({
@@ -130,7 +130,7 @@ function InitialContactsPage() {
     );
   }
 
-  debugImport("page:render", {
+  debugContatos("page:render", {
     contactsCount: contacts.length,
     filteredCount: filtered.length,
     filter,
@@ -151,7 +151,7 @@ function InitialContactsPage() {
   });
 
   function openMessage(c: InitialContact) {
-    debugImport("button:visualizar-click", { contact: c });
+    debugContatos("button:visualizar-click", { contact: c });
     setMsgContact(c);
     setChosenName(c.firstName);
   }
@@ -186,7 +186,7 @@ function InitialContactsPage() {
     const name = firstNameAndSurname(c.responsibleOriginal);
     const matrix = normalizeMatrix(c.matrixOriginal);
     const text = [name, matrix].filter(Boolean).join(" - ");
-    debugImport("button:copy-name-click", { contact: c, copiedText: text });
+    debugContatos("button:copy-name-click", { contact: c, copiedText: text });
     if (!text) {
       toast.error("Nome não encontrado para copiar.");
       return;
@@ -213,7 +213,7 @@ function InitialContactsPage() {
         </div>
         <Button
           onClick={() => {
-            debugImport("button:import-click", {
+            debugContatos("button:import-click", {
               contactsCount: contacts.length,
               invalidContacts: contacts.filter((c) => c.validationIssues.length > 0),
             });
@@ -428,7 +428,7 @@ function InitialContactsPage() {
         kind="initial"
         title="Importar contato com cliente"
         onConfirm={(rows, mapping, fileName, headerRow, sheetName) => {
-          debugImport("confirm:start", {
+          debugContatos("confirm:start", {
             fileName,
             sheetName,
             headerRow,
@@ -439,7 +439,7 @@ function InitialContactsPage() {
           });
           const { records, diagnostic } = buildInitialContacts(rows, mapping, headerRow);
           const updates = detectInitialContactUpdates(store.initialContacts, records);
-          debugImport("confirm:built", {
+          debugContatos("confirm:built", {
             recordsCount: records.length,
             diagnostic,
             updates,
@@ -466,7 +466,7 @@ function InitialContactsPage() {
           open={msgContact !== null}
           onOpenChange={(v) => !v && setMsgContact(null)}
           message={buildResponsibleMessage(msgContact, undefined, chosenName)}
-          phone={msgContact.phoneNormalized}
+          phone={msgContact.phoneNormalized ?? msgContact.allPhones?.[0] ?? msgContact.phoneOriginal ?? null}
           title={`Mensagem para ${msgContact.firstName || "responsável"}`}
           extraInfo={
             (msgContact.alternativeNames?.length ?? 0) > 0 ? (

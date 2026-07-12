@@ -1,8 +1,16 @@
 const FORMAT_MARKER = "\u200BFORMAT:";
 const FORMAT_MARKER_END = "\u200B";
 
+const PASTE_DEBUG = true;
+
+function debugPaste(label: string, data: unknown) {
+  if (!PASTE_DEBUG) return;
+  console.log(`[PASTE DEBUG] ${label}`, JSON.stringify(data, null, 2));
+}
+
 export function parsePastedData(text: string): string[][] {
   if (!text) return [];
+  debugPaste("parsePastedData:start", { textLength: text.length, preview: text.slice(0, 1000) });
   const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lines = normalizedText.split("\n").filter((l) => l.length > 0);
   if (lines.length === 0) return [];
@@ -20,17 +28,11 @@ export function parsePastedData(text: string): string[][] {
     if (line.trim() === "") continue;
     rows.push(line.split(delim).map((c) => c.trim()));
   }
+  debugPaste("parsePastedData:end", { rowCount: rows.length, rows: rows.slice(0, 10) });
   return rows;
 }
 
 type CellFormat = "green" | "red" | "orange";
-
-const PASTE_DEBUG = true;
-
-function debugPaste(label: string, data: unknown) {
-  if (!PASTE_DEBUG) return;
-  console.log(`[PASTE DEBUG] ${label}`, data);
-}
 
 function marker(format: CellFormat): string {
   return `${FORMAT_MARKER}${format}${FORMAT_MARKER_END}`;

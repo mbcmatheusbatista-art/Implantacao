@@ -38,11 +38,11 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   quantity: "Quantidade",
 };
 
-const IMPORT_DEBUG = true;
+const DIALOG_DEBUG = true;
 
-function debugImport(label: string, data: unknown) {
-  if (!IMPORT_DEBUG) return;
-  console.log(`[IMPORT DEBUG][DIALOG] ${label}`, data);
+function debugDialog(label: string, data: unknown) {
+  if (!DIALOG_DEBUG) return;
+  console.log(`[DIALOG DEBUG] ${label}`, JSON.stringify(data, null, 2));
 }
 
 interface Props {
@@ -103,7 +103,7 @@ export function ImportDialog({
 
   async function handleFile(file: File) {
     try {
-      debugImport("upload:file:start", {
+      debugDialog("upload:file:start", {
         kind,
         fileName: file.name,
         size: file.size,
@@ -114,7 +114,7 @@ export function ImportDialog({
       if (file.name.toLowerCase().endsWith(".csv")) {
         const text = await file.text();
         const rows = parsePastedData(text);
-        debugImport("upload:csv:parsed", {
+        debugDialog("upload:csv:parsed", {
           kind,
           fileName: file.name,
           textLength: text.length,
@@ -126,7 +126,7 @@ export function ImportDialog({
         setSheetNames([]);
       } else {
         const wb = await parseExcelFile(file);
-        debugImport("upload:excel:parsed", {
+        debugDialog("upload:excel:parsed", {
           kind,
           fileName: file.name,
           sheetNames: wb.sheetNames,
@@ -156,7 +156,7 @@ export function ImportDialog({
     const nextMapping = Object.fromEntries(
       Object.entries(detectedMapping).filter(([field]) => allowedFields.has(field as FieldKey)),
     ) as Partial<Record<FieldKey, string>>;
-    debugImport("rows:applied", {
+    debugDialog("rows:applied", {
       kind,
       rowCount: rows.length,
       headerRow: hIdx,
@@ -168,7 +168,7 @@ export function ImportDialog({
   }
 
   function handleSheetChange(name: string) {
-    debugImport("upload:sheet-change", {
+    debugDialog("upload:sheet-change", {
       kind,
       previousSheet: selectedSheet,
       nextSheet: name,
@@ -179,13 +179,13 @@ export function ImportDialog({
   }
 
   function handleAnalyzePaste() {
-    debugImport("paste:analyze-click", {
+    debugDialog("paste:analyze-click", {
       kind,
       textLength: pastedText.length,
       preview: pastedText.slice(0, 1000),
     });
     const rows = pastedRowsWithFormatting ?? parsePastedData(pastedText);
-    debugImport("paste:parsed", {
+    debugDialog("paste:parsed", {
       kind,
       rowCount: rows.length,
       rowsPreview: rows.slice(0, 20),
@@ -200,7 +200,7 @@ export function ImportDialog({
 
   function handleConfirm() {
     const missing = requiredFields.filter((f) => !mapping[f]);
-    debugImport("confirm:click", {
+    debugDialog("confirm:click", {
       kind,
       fileName,
       selectedSheet,
@@ -227,7 +227,7 @@ export function ImportDialog({
             return filteredRow;
           })
         : dataObjects;
-    debugImport("confirm:rows-sent", {
+    debugDialog("confirm:rows-sent", {
       kind,
       count: confirmedRows.length,
       rowsPreview: confirmedRows.slice(0, 20),
@@ -264,7 +264,7 @@ export function ImportDialog({
           <Tabs
             value={tab}
             onValueChange={(v) => {
-              debugImport("tab:change", { kind, previousTab: tab, nextTab: v });
+              debugDialog("tab:change", { kind, previousTab: tab, nextTab: v });
               setTab(v as "upload" | "paste");
             }}
           >
@@ -280,17 +280,17 @@ export function ImportDialog({
               <div
                 className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/40 transition"
                 onClick={() => {
-                  debugImport("upload:dropzone-click", { kind, fileName, selectedSheet });
+                  debugDialog("upload:dropzone-click", { kind, fileName, selectedSheet });
                   fileRef.current?.click();
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
-                  debugImport("upload:drag-over", { kind });
+                  debugDialog("upload:drag-over", { kind });
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
                   const f = e.dataTransfer.files?.[0];
-                  debugImport("upload:drop", {
+                  debugDialog("upload:drop", {
                     kind,
                     fileCount: e.dataTransfer.files?.length ?? 0,
                     fileName: f?.name,
@@ -311,7 +311,7 @@ export function ImportDialog({
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    debugImport("upload:file-input-change", {
+                    debugDialog("upload:file-input-change", {
                       kind,
                       fileCount: e.target.files?.length ?? 0,
                       fileName: f?.name,
@@ -344,7 +344,7 @@ export function ImportDialog({
               <Textarea
                 value={pastedText}
                 onChange={(e) => {
-                  debugImport("paste:text-change", {
+                  debugDialog("paste:text-change", {
                     kind,
                     previousLength: pastedText.length,
                     nextLength: e.target.value.length,
@@ -355,10 +355,19 @@ export function ImportDialog({
                 }}
                 onPaste={(e) => {
                   const html = e.clipboardData.getData("text/html");
+                  const text = e.clipboardData.getData("text/plain");
+                  debugDialog("paste:event", {
+                    kind,
+                    htmlLength: html.length,
+                    textLength: text.length,
+                    textPreview: text.slice(0, 500),
+                    htmlPreview: html.slice(0, 1000),
+                    htmlRows: parsePastedHtmlData(html).length,
+                  });
                   const rows = parsePastedHtmlData(html);
                   if (rows.length > 0) {
                     e.preventDefault();
-                    debugImport("paste:html-formatting-detected", {
+                    debugDialog("paste:html-formatting-detected", {
                       kind,
                       rowCount: rows.length,
                       rowsPreview: rows.slice(0, 10),
@@ -394,7 +403,7 @@ export function ImportDialog({
                   value={String(headerRow)}
                   onValueChange={(v) => {
                     const idx = parseInt(v, 10);
-                    debugImport("header-row:change", {
+                    debugDialog("header-row:change", {
                       kind,
                       previousHeaderRow: headerRow,
                       nextHeaderRow: idx,
@@ -411,7 +420,7 @@ export function ImportDialog({
                         allowedFields.has(field as FieldKey),
                       ),
                     ) as Partial<Record<FieldKey, string>>;
-                    debugImport("header-row:mapping-updated", {
+                    debugDialog("header-row:mapping-updated", {
                       kind,
                       headers: hdrs,
                       mapping: nextMapping,
@@ -439,7 +448,7 @@ export function ImportDialog({
                     <Select
                       value={mapping[f] ?? "__none__"}
                       onValueChange={(v) => {
-                        debugImport("mapping:manual-change", {
+                        debugDialog("mapping:manual-change", {
                           kind,
                           field: f,
                           previousColumn: mapping[f],
@@ -499,7 +508,7 @@ export function ImportDialog({
           <Button
             variant="ghost"
             onClick={() => {
-              debugImport("cancel:click", {
+              debugDialog("cancel:click", {
                 kind,
                 fileName,
                 selectedSheet,

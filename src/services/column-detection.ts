@@ -39,7 +39,7 @@ const SYNONYMS: Record<FieldKey, string[]> = {
 
 const KIND_FIELDS: Record<ImportKind, FieldKey[]> = {
   initial: ["plate", "responsible", "phone", "matrix"],
-  confirmed: ["plate", "responsible", "phone", "address", "equipment"],
+  confirmed: ["plate", "responsible", "phone", "matrix", "address", "equipment"],
   technicians: ["technician", "phone", "city", "state", "quantity"],
 };
 

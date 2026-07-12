@@ -15,11 +15,11 @@ import { parseTechnicianQuantity, stripQuantityFormat } from "@/utils/parse-quan
 let idCounter = 0;
 const uid = () => `${Date.now().toString(36)}-${(idCounter++).toString(36)}`;
 
-const IMPORT_DEBUG = true;
+const BUILD_DEBUG = true;
 
-function debugImport(label: string, data: unknown) {
-  if (!IMPORT_DEBUG) return;
-  console.log(`[IMPORT DEBUG][BUILD] ${label}`, data);
+function debugBuild(label: string, data: unknown) {
+  if (!BUILD_DEBUG) return;
+  console.log(`[BUILD DEBUG] ${label}`, JSON.stringify(data, null, 2));
 }
 
 export interface BuildResult<T> {
@@ -42,7 +42,7 @@ export function buildInitialContacts(
   mapping: Partial<Record<FieldKey, string>>,
   headerRow: number,
 ): BuildResult<InitialContact> {
-  debugImport("initial:start", {
+  debugBuild("initial:start", {
     totalRows: rows.length,
     mapping,
     headerRow,
@@ -79,7 +79,7 @@ export function buildInitialContacts(
     const respRaw = getField(row, mapping, "responsible");
     const phoneRaw = getField(row, mapping, "phone");
     const matrixRaw = getField(row, mapping, "matrix");
-    debugImport("initial:row:raw-fields", {
+    debugBuild("initial:row:raw-fields", {
       index: idx,
       spreadsheetRow: idx + headerRow + 2,
       row,
@@ -91,7 +91,7 @@ export function buildInitialContacts(
     });
     if (!plateRaw && !respRaw && !phoneRaw) {
       skipped++;
-      debugImport("initial:row:skipped-empty", { index: idx, row });
+      debugBuild("initial:row:skipped-empty", { index: idx, row });
       return;
     }
     if (!plateRaw) emptyPlates++;
@@ -108,7 +108,7 @@ export function buildInitialContacts(
     }
     imported++;
 
-    debugImport("initial:row:normalized", {
+    debugBuild("initial:row:normalized", {
       index: idx,
       spreadsheetRow: idx + headerRow + 2,
       plateRaw,
@@ -125,7 +125,7 @@ export function buildInitialContacts(
       const key = phoneResult.primary;
       const existing = byPhone.get(key);
       if (existing) {
-        debugImport("initial:row:grouped-by-phone", {
+        debugBuild("initial:row:grouped-by-phone", {
           index: idx,
           phoneKey: key,
           existing,
@@ -147,7 +147,7 @@ export function buildInitialContacts(
           existing.matrixOriginal = matrixRaw;
         }
       } else {
-        debugImport("initial:row:create-valid-contact", {
+        debugBuild("initial:row:create-valid-contact", {
           index: idx,
           phoneKey: key,
           plateRaw,
@@ -174,7 +174,7 @@ export function buildInitialContacts(
         recordsInOrder.push(contact);
       }
     } else {
-      debugImport("initial:row:create-invalid-contact", {
+      debugBuild("initial:row:create-invalid-contact", {
         index: idx,
         plateRaw,
         respRaw,
@@ -205,7 +205,7 @@ export function buildInitialContacts(
   const grouped = Array.from(byPhone.values());
   const nameConflicts = grouped.filter((c) => (c.alternativeNames?.length ?? 0) > 0).length;
   const records = recordsInOrder;
-  debugImport("initial:end", {
+  debugBuild("initial:end", {
     imported,
     skipped,
     invalid,
@@ -248,6 +248,7 @@ export function buildConfirmedServices(
   rows.forEach((row) => {
     const plateRaw = getField(row, mapping, "plate");
     const respRaw = getField(row, mapping, "responsible");
+    const matrixRaw = getField(row, mapping, "matrix");
     const phoneRaw = getField(row, mapping, "phone");
     const addressRaw = getField(row, mapping, "address");
     const equipmentRaw = getField(row, mapping, "equipment");
@@ -285,6 +286,7 @@ export function buildConfirmedServices(
       plateOriginal: plateRaw,
       plateNormalized: normalizePlate(plateRaw),
       responsibleOriginal: respRaw,
+      matrizOriginal: matrixRaw || undefined,
       firstName: extractFirstName(respRaw),
       phoneOriginal: phoneRaw,
       phoneNormalized: phoneResult.primary,
