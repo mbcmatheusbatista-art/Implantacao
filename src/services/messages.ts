@@ -31,7 +31,7 @@ Até mais!`,
 Meu nome é Matheus, trabalho na Creare Sistemas e gostaria de verificar contigo a disponibilidade para realizar uma instalação de {equipamento}.
 
 Veículo/placa: {placa}
-Cidade/UF: {cidade}/{uf}
+Endereço: {endereco}
 Data: {data}
 Horário: {horario}
 
@@ -132,8 +132,7 @@ export function buildTechnicianMessage(
     .replaceAll("{primeiro_nome_tecnico}", name)
     .replaceAll("{equipamento}", equipmentLabel(s.equipmentNormalized))
     .replaceAll("{placa}", s.plateOriginal || "-")
-    .replaceAll("{cidade}", s.cityDetected || "-")
-    .replaceAll("{uf}", s.stateDetected || "-")
+    .replaceAll("{endereco}", s.fullAddress || "-")
     .replaceAll("{data}", ctx.scheduledDate || "A confirmar")
     .replaceAll("{horario}", ctx.scheduledTime || "A confirmar");
 }
@@ -159,7 +158,7 @@ export function buildGroupedTechnicianMessage(
         `Equipamento: ${equipmentLabel(s.equipmentNormalized)}`,
         `Placa: ${s.plateOriginal || "-"}`,
 
-        `Cidade/UF: ${s.cityDetected || "-"}/${s.stateDetected || "-"}`,
+        `Endereço: ${s.fullAddress || "-"}`,  
         `Data: ${c.scheduledDate || "A confirmar"}`,
         `Horário: ${c.scheduledTime || "A confirmar"}`,
       ].join("\n");
