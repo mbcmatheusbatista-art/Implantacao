@@ -57,25 +57,18 @@ function stripCountryCode(digits: string): string {
 }
 
 /**
- * Try to recover a DDD-less number (8 or 9 raw digits) by checking if the
- * first two digits form a valid Brazilian DDD.
- * e.g. "992577255" (9 digits) → DDD=99, number=2577255 (7 digits) → too short.
- * But "9925772551" (10 digits) → DDD=99, number=25772551 → valid.
- * For a 9-digit string starting with a valid DDD we cannot reliably split, so
- * we return null and let the user edit the field manually.
+ * Try to recover a number with fewer than 10 digits by checking if the first
+ * two digits form a valid Brazilian DDD. Accepts 8 and 9-digit totals where
+ * the local part is 6 or 7 digits (older Brazilian fixed-line format).
+ *
+ * e.g. "992577255" (9 digits) → DDD=99, local=2577255 → accepted as `55992577255`
  */
 function tryRecoverWithEmbeddedDDD(digits: string): string | null {
-  // Already handled by validateAndFormat if length is 10 or 11
-  if (digits.length === 10 || digits.length === 11) return null;
-  // For 8 or 9 raw digits, check first-two as DDD
   if (digits.length === 8 || digits.length === 9) {
     const maybeDDD = parseInt(digits.slice(0, 2), 10);
     if (VALID_DDD.has(maybeDDD)) {
-      // The remaining part is 6 or 7 digits — not a valid local number (needs 8 or 9).
-      // We cannot reliably add a digit. Return null; the raw value will be shown in the
-      // editable field so the user can fix the DDD prefix manually.
-      debugImport("validate:too-short-with-ddd", { digits, maybeDDD });
-      return null;
+      debugImport("validate:recovered-short-number", { digits, maybeDDD });
+      return `55${digits}`;
     }
   }
   return null;
@@ -84,7 +77,6 @@ function tryRecoverWithEmbeddedDDD(digits: string): string | null {
 function validateAndFormat(digits: string): string | null {
   const local = stripCountryCode(digits);
   if (local.length !== 10 && local.length !== 11) {
-    // Try the embedded-DDD recovery path
     const recovered = tryRecoverWithEmbeddedDDD(local);
     if (recovered) return recovered;
     debugImport("validate:invalid-length", { digits, local, length: local.length });
@@ -144,5 +136,14 @@ export function formatPhoneForDisplay(normalized: string | null): string {
   if (local.length === 10) {
     return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
   }
+  // 9-digit: DDD(2) + local(7) – old fixed-line format
+  if (local.length === 9) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+  // 8-digit: DDD(2) + local(6)
+  if (local.length === 8) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 5)}-${local.slice(5)}`;
+  }
   return normalized;
 }
+
