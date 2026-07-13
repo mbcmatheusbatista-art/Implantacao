@@ -44,7 +44,7 @@ function getTechnicianOrigin(technician: Technician): string {
   return cleanAddress([technician.cityOriginal, technician.state].filter(Boolean).join(", "));
 }
 
-function getServiceDestination(service: ConfirmedService): string {
+export function getServiceDestination(service: ConfirmedService): string {
   // geocode uses extractCity → brCityCoords, so city+state is ideal; fall back to full address
   if (service.cityDetected) {
     return cleanAddress([service.cityDetected, service.stateDetected].filter(Boolean).join(", "));
@@ -78,7 +78,7 @@ export function normalize(str: string): string {
     .trim();
 }
 
-function extractCity(query: string): string {
+export function extractCity(query: string): string {
   let cleaned = query
     .replace(/https?:\/\/\S+/gi, " ")
     .replace(/\s+/g, " ")
@@ -87,6 +87,8 @@ function extractCity(query: string): string {
   cleaned = cleaned.replace(/^[A-Z0-9]+\+[A-Z0-9]+\s*/i, "");
   // Remove parenthetical suffixes like "(BH)" from city names
   cleaned = cleaned.replace(/\s*\([^)]*\)\s*/g, " ");
+  // Strip trailing alphanumeric codes that appear after state (e.g. "TDR6H01")
+  cleaned = cleaned.replace(/\s+[A-Z0-9]{5,}$/i, " ");
   cleaned = cleaned.replace(/\s+/g, " ").trim();
   // Find state abbreviation (2 uppercase letters) at the end
   const stateMatch = cleaned.match(/([A-Z]{2})$/);

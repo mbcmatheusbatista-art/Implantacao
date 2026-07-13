@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TecnicosRouteImport } from './routes/tecnicos'
+import { Route as RoteirizacaoRouteImport } from './routes/roteirizacao'
 import { Route as DistribuicaoRouteImport } from './routes/distribuicao'
 import { Route as DiagnosticoRouteImport } from './routes/diagnostico'
 import { Route as ContatosIniciaisRouteImport } from './routes/contatos-iniciais'
@@ -20,6 +21,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const TecnicosRoute = TecnicosRouteImport.update({
   id: '/tecnicos',
   path: '/tecnicos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoteirizacaoRoute = RoteirizacaoRouteImport.update({
+  id: '/roteirizacao',
+  path: '/roteirizacao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DistribuicaoRoute = DistribuicaoRouteImport.update({
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/contatos-iniciais': typeof ContatosIniciaisRoute
   '/diagnostico': typeof DiagnosticoRoute
   '/distribuicao': typeof DistribuicaoRoute
+  '/roteirizacao': typeof RoteirizacaoRoute
   '/tecnicos': typeof TecnicosRoute
 }
 export interface FileRoutesByTo {
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/contatos-iniciais': typeof ContatosIniciaisRoute
   '/diagnostico': typeof DiagnosticoRoute
   '/distribuicao': typeof DistribuicaoRoute
+  '/roteirizacao': typeof RoteirizacaoRoute
   '/tecnicos': typeof TecnicosRoute
 }
 export interface FileRoutesById {
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/contatos-iniciais': typeof ContatosIniciaisRoute
   '/diagnostico': typeof DiagnosticoRoute
   '/distribuicao': typeof DistribuicaoRoute
+  '/roteirizacao': typeof RoteirizacaoRoute
   '/tecnicos': typeof TecnicosRoute
 }
 export interface FileRouteTypes {
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/contatos-iniciais'
     | '/diagnostico'
     | '/distribuicao'
+    | '/roteirizacao'
     | '/tecnicos'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/contatos-iniciais'
     | '/diagnostico'
     | '/distribuicao'
+    | '/roteirizacao'
     | '/tecnicos'
   id:
     | '__root__'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/contatos-iniciais'
     | '/diagnostico'
     | '/distribuicao'
+    | '/roteirizacao'
     | '/tecnicos'
   fileRoutesById: FileRoutesById
 }
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   ContatosIniciaisRoute: typeof ContatosIniciaisRoute
   DiagnosticoRoute: typeof DiagnosticoRoute
   DistribuicaoRoute: typeof DistribuicaoRoute
+  RoteirizacaoRoute: typeof RoteirizacaoRoute
   TecnicosRoute: typeof TecnicosRoute
 }
 
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/tecnicos'
       fullPath: '/tecnicos'
       preLoaderRoute: typeof TecnicosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/roteirizacao': {
+      id: '/roteirizacao'
+      path: '/roteirizacao'
+      fullPath: '/roteirizacao'
+      preLoaderRoute: typeof RoteirizacaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/distribuicao': {
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContatosIniciaisRoute: ContatosIniciaisRoute,
   DiagnosticoRoute: DiagnosticoRoute,
   DistribuicaoRoute: DistribuicaoRoute,
+  RoteirizacaoRoute: RoteirizacaoRoute,
   TecnicosRoute: TecnicosRoute,
 }
 export const routeTree = rootRouteImport

@@ -11,6 +11,7 @@ import {
   detectInitialContactUpdates,
   type InitialContactUpdate,
 } from "@/services/initial-contact-updates";
+import { saveToDb, clearDb, loadAllFromDb } from "@/services/db";
 
 interface ImportMeta {
   fileName: string;
@@ -54,45 +55,64 @@ export const useAppStore = create<AppState>((set) => ({
   meta: {},
   lastInitialContactUpdates: [],
 
-  setInitialContacts: (r, meta, diag) =>
+  setInitialContacts: (r, meta, diag) => {
     set((s) => ({
       initialContacts: r,
       meta: { ...s.meta, initial: meta },
       diagnostics: { ...s.diagnostics, initial: diag },
       lastInitialContactUpdates: detectInitialContactUpdates(s.initialContacts, r),
-    })),
-  setConfirmedServices: (r, meta, diag) =>
+    }));
+    saveToDb("initialContacts", r).catch(() => {});
+    saveToDb("meta", { ...meta }).catch(() => {});
+    saveToDb("diagnostics", { initial: diag }).catch(() => {});
+  },
+  setConfirmedServices: (r, meta, diag) => {
     set((s) => ({
       confirmedServices: r,
       meta: { ...s.meta, confirmed: meta },
       diagnostics: { ...s.diagnostics, confirmed: diag },
-    })),
-  setTechnicians: (r, meta, diag) =>
+    }));
+    saveToDb("confirmedServices", r).catch(() => {});
+    saveToDb("diagnostics", { confirmed: diag }).catch(() => {});
+  },
+  setTechnicians: (r, meta, diag) => {
     set((s) => ({
       technicians: r,
       meta: { ...s.meta, technicians: meta },
       diagnostics: { ...s.diagnostics, technicians: diag },
-    })),
+    }));
+    saveToDb("technicians", r).catch(() => {});
+    saveToDb("diagnostics", { technicians: diag }).catch(() => {});
+  },
 
-  toggleContacted: (id) =>
+  toggleContacted: (id) => {
     set((s) => {
       const next = new Set(s.contactedIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return { contactedIds: next };
-    }),
+    });
+    const { contactedIds } = useAppStore.getState();
+    saveToDb("contactedIds", [...contactedIds]).catch(() => {});
+  },
 
-  assign: (serviceId, technicianId, scheduledDate, scheduledTime, notes) =>
+  assign: (serviceId, technicianId, scheduledDate, scheduledTime, notes) => {
     set((s) => {
       const others = s.assignments.filter((a) => a.serviceId !== serviceId);
       return {
         assignments: [...others, { serviceId, technicianId, scheduledDate, scheduledTime, notes }],
       };
-    }),
-  unassign: (serviceId) =>
-    set((s) => ({ assignments: s.assignments.filter((a) => a.serviceId !== serviceId) })),
+    });
+    const { assignments } = useAppStore.getState();
+    saveToDb("assignments", assignments).catch(() => {});
+  },
+  unassign: (serviceId) => {
+    set((s) => ({ assignments: s.assignments.filter((a) => a.serviceId !== serviceId) }));
+    const { assignments } = useAppStore.getState();
+    saveToDb("assignments", assignments).catch(() => {});
+  },
 
-  clearAll: () =>
+  clearAll: () => {
     set({
       initialContacts: [],
       confirmedServices: [],
@@ -102,8 +122,33 @@ export const useAppStore = create<AppState>((set) => ({
       diagnostics: {},
       meta: {},
       lastInitialContactUpdates: [],
-    }),
+    });
+    clearDb().catch(() => {});
+  },
 }));
+
+export async function hydrateFromDb(): Promise<void> {
+  try {
+    const data = await loadAllFromDb();
+    if (!data) return;
+
+    const toSet: Partial<AppState> = {};
+
+    if (data.technicians) toSet.technicians = data.technicians;
+    if (data.confirmedServices) toSet.confirmedServices = data.confirmedServices;
+    if (data.initialContacts) toSet.initialContacts = data.initialContacts;
+    if (data.assignments) toSet.assignments = data.assignments;
+    if (data.contactedIds) toSet.contactedIds = new Set(data.contactedIds);
+    if (data.diagnostics) toSet.diagnostics = data.diagnostics as Partial<Record<ImportKind, ImportDiagnostic>>;
+    if (data.meta) toSet.meta = data.meta as Partial<Record<ImportKind, ImportMeta>>;
+
+    if (Object.keys(toSet).length > 0) {
+      useAppStore.setState(toSet);
+    }
+  } catch (err) {
+    console.warn("[DB] Hydration failed (expected on first load)", err);
+  }
+}
 
 export function getSessionLoads(assignments: Assignment[]): Map<string, number> {
   const m = new Map<string, number>();

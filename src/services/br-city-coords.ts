@@ -1,3 +1,5 @@
+import { spCityCoords } from "./sp-cities";
+
 export const brCityCoords: Record<string, { lat: number; lng: number }> = {
   // --- AC ---
   "rio branco, ac": { lat: -9.9740, lng: -67.8076 },
@@ -305,4 +307,5 @@ export const brCityCoords: Record<string, { lat: number; lng: number }> = {
   "pará de minas, mg": { lat: -19.8601, lng: -44.6083 },
   "para de minas, mg": { lat: -19.8601, lng: -44.6083 },
   "viana, es": { lat: -20.3838, lng: -40.4975 },
+  ...spCityCoords,
 };
