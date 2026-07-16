@@ -290,7 +290,7 @@ export function buildConfirmedServices(
     let serviceStatus: ConfirmedService["serviceStatus"] = "";
     if (statusNorm === "AGENDADO") serviceStatus = "AGENDADO";
     else if (statusNorm === "AGENDANDO") serviceStatus = "AGENDANDO";
-    else if (statusNorm === "AGENDAR") serviceStatus = "AGENDAR";
+    else if (statusNorm.startsWith("AGENDAR")) serviceStatus = "AGENDAR";
 
     records.push({
       id: uid(),
@@ -309,6 +309,7 @@ export function buildConfirmedServices(
       technicianOriginal: technicianRaw || undefined,
       technicianNormalized: technicianRaw ? normalizeText(technicianRaw) : undefined,
       serviceStatus,
+      serviceStatusOriginal: statusRaw || undefined,
       dataHora: dataHoraRaw || undefined,
       validationIssues: issues,
     });

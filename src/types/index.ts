@@ -53,6 +53,7 @@ export interface ConfirmedService {
   technicianOriginal?: string;
   technicianNormalized?: string;
   serviceStatus?: ServiceStatus;
+  serviceStatusOriginal?: string;
   dataHora?: string;
   validationIssues: string[];
 }
