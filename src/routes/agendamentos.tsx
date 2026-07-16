@@ -35,6 +35,14 @@ function AgendamentosPage() {
   const [statusOverrides, setStatusOverrides] = useState<StatusOverrides>({});
   const [selectedTechFilter, setSelectedTechFilter] = useState<string>("all");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
+  const uniqueStatusOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of services) {
+      const display = getStatusDisplay(s);
+      if (display) set.add(display);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [services]);
   const [hiddenTechs, setHiddenTechs] = useState<Set<string>>(new Set());
   const [includeAgendando, setIncludeAgendando] = useState(true);
   const [messageTech, setMessageTech] = useState<{
@@ -168,14 +176,6 @@ function AgendamentosPage() {
     return namesMatch(svcName, value);
   }
 
-  const debugOriginais = useMemo(() => {
-    const comOriginal = services.filter(s => s.serviceStatusOriginal).length;
-    const semOriginal = services.filter(s => !s.serviceStatusOriginal).length;
-    const variados = services.filter(s => s.serviceStatusOriginal && s.serviceStatusOriginal !== s.serviceStatus).slice(0, 5).map(s => s.serviceStatusOriginal);
-    const totalDif = services.filter(s => s.serviceStatusOriginal && s.serviceStatusOriginal !== s.serviceStatus).length;
-    return { comOriginal, semOriginal, variados, totalDif };
-  }, [services]);
-
   const filteredServices = useMemo(() => {
     let result = [...services];
     result = result.filter((s) => {
@@ -186,7 +186,7 @@ function AgendamentosPage() {
       result = result.filter((s) => filterByTech(s, selectedTechFilter));
     }
     if (selectedStatusFilter !== "all") {
-      result = result.filter((s) => getEffectiveStatus(s) === selectedStatusFilter);
+      result = result.filter((s) => getStatusDisplay(s) === selectedStatusFilter);
     }
     result = result.filter((s) => {
       if (getEffectiveStatus(s) === "AGENDADO" && !hasAddress(s)) return false;
@@ -278,18 +278,6 @@ function AgendamentosPage() {
         </p>
       </div>
 
-      <Card className="border-2 border-yellow-400 bg-yellow-50">
-        <CardContent className="py-2 text-xs">
-          <strong>DEBUG:</strong> {services.length} serviços carregados.
-          {debugOriginais.comOriginal > 0 ? (
-            <> {debugOriginais.comOriginal} com statusOriginal. {debugOriginais.totalDif} diferentes do status normalizado. Ex: <span className="text-blue-700">{debugOriginais.variados.join(" | ")}</span></>
-          ) : (
-            <> <span className="text-red-600 font-bold">NENHUM serviço tem serviceStatusOriginal!</span> 
-            Reimporte o "Cliente com endereço" nesta página (porta 8080) para ver os status originais.</>
-          )}
-        </CardContent>
-      </Card>
-
       {services.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
@@ -325,12 +313,12 @@ function AgendamentosPage() {
               <div className="space-y-1">
                 <Label className="text-xs">Status</Label>
                 <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-56">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    {STATUS_OPTIONS.map((opt) => (
+                    {uniqueStatusOptions.map((opt) => (
                       <SelectItem key={opt} value={opt}>
                         {opt}
                       </SelectItem>
