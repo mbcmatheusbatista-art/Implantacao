@@ -15,8 +15,8 @@ type AdminName = (typeof ADMIN_NAMES)[number];
 
 function containsAdminName(text: string, name: AdminName): boolean {
   const regexMap: Record<AdminName, RegExp> = {
-    Rogério: /\bRog[eéê]ri[oó]\b/i,
-    Fernando: /\bFernand[oó]\b/i,
+    Rogério: /\b[Rr][Oo][Gg][Eeèéêë][Rr][Iiíì][Ooóòôõ]\b/,
+    Fernando: /\b[Ff][Ee][Rr][Nn][Aaãâàá][Nn][Dd][Ooóòôõ]\b/,
   };
   return regexMap[name].test(text);
 }
