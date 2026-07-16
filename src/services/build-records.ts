@@ -11,6 +11,8 @@ import { normalizePlate } from "@/utils/normalize-text";
 import { normalizeEquipment } from "@/utils/normalize-equipment";
 import { extractCityAndStateFromAddress } from "@/utils/extract-location";
 import { parseTechnicianQuantity, stripQuantityFormat } from "@/utils/parse-quantity";
+import { parseEquipmentQuantity } from "@/utils/parse-equipment-quantity";
+import { normalizeText } from "@/utils/normalize-text";
 
 let idCounter = 0;
 const uid = () => `${Date.now().toString(36)}-${(idCounter++).toString(36)}`;
@@ -252,6 +254,9 @@ export function buildConfirmedServices(
     const phoneRaw = getField(row, mapping, "phone");
     const addressRaw = getField(row, mapping, "address");
     const equipmentRaw = getField(row, mapping, "equipment");
+    const technicianRaw = getField(row, mapping, "technician");
+    const statusRaw = getField(row, mapping, "status");
+    const dataHoraRaw = getField(row, mapping, "dataHora");
     if (!plateRaw && !respRaw && !phoneRaw && !addressRaw) {
       skipped++;
       return;
@@ -281,6 +286,12 @@ export function buildConfirmedServices(
       issues.push(phoneResult.reason ?? "Telefone vazio");
     }
 
+    const statusNorm = normalizeText(statusRaw);
+    let serviceStatus: ConfirmedService["serviceStatus"] = "";
+    if (statusNorm === "AGENDADO") serviceStatus = "AGENDADO";
+    else if (statusNorm === "AGENDANDO") serviceStatus = "AGENDANDO";
+    else if (statusNorm === "AGENDAR") serviceStatus = "AGENDAR";
+
     records.push({
       id: uid(),
       plateOriginal: plateRaw,
@@ -295,6 +306,10 @@ export function buildConfirmedServices(
       stateDetected: loc.state,
       equipmentOriginal: equipmentRaw,
       equipmentNormalized: eq,
+      technicianOriginal: technicianRaw || undefined,
+      technicianNormalized: technicianRaw ? normalizeText(technicianRaw) : undefined,
+      serviceStatus,
+      dataHora: dataHoraRaw || undefined,
       validationIssues: issues,
     });
     imported++;
@@ -354,6 +369,8 @@ export function buildTechnicians(
     }
     if (qty.status === "TEXTO_NAO_INTERPRETADO") quantityUnparsed++;
 
+    const eqBreakdown = parseEquipmentQuantity(qRaw);
+
     records.push({
       id: uid(),
       nameOriginal: nameRaw,
@@ -367,6 +384,7 @@ export function buildTechnicians(
       quantityOriginal: stripQuantityFormat(qRaw),
       availableQuantity: qty.quantity,
       stockStatus: qty.status,
+      equipmentBreakdown: eqBreakdown,
       validationIssues: issues,
     });
     imported++;

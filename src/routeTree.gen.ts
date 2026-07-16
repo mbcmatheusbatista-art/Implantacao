@@ -16,6 +16,7 @@ import { Route as DiagnosticoRouteImport } from './routes/diagnostico'
 import { Route as ContatosIniciaisRouteImport } from './routes/contatos-iniciais'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AtendimentosRouteImport } from './routes/atendimentos'
+import { Route as AgendamentosRouteImport } from './routes/agendamentos'
 import { Route as IndexRouteImport } from './routes/index'
 
 const TecnicosRoute = TecnicosRouteImport.update({
@@ -53,6 +54,11 @@ const AtendimentosRoute = AtendimentosRouteImport.update({
   path: '/atendimentos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgendamentosRoute = AgendamentosRouteImport.update({
+  id: '/agendamentos',
+  path: '/agendamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -61,6 +67,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agendamentos': typeof AgendamentosRoute
   '/atendimentos': typeof AtendimentosRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/contatos-iniciais': typeof ContatosIniciaisRoute
@@ -71,6 +78,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agendamentos': typeof AgendamentosRoute
   '/atendimentos': typeof AtendimentosRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/contatos-iniciais': typeof ContatosIniciaisRoute
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agendamentos': typeof AgendamentosRoute
   '/atendimentos': typeof AtendimentosRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/contatos-iniciais': typeof ContatosIniciaisRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/agendamentos'
     | '/atendimentos'
     | '/configuracoes'
     | '/contatos-iniciais'
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/agendamentos'
     | '/atendimentos'
     | '/configuracoes'
     | '/contatos-iniciais'
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/agendamentos'
     | '/atendimentos'
     | '/configuracoes'
     | '/contatos-iniciais'
@@ -125,6 +137,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgendamentosRoute: typeof AgendamentosRoute
   AtendimentosRoute: typeof AtendimentosRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   ContatosIniciaisRoute: typeof ContatosIniciaisRoute
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtendimentosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agendamentos': {
+      id: '/agendamentos'
+      path: '/agendamentos'
+      fullPath: '/agendamentos'
+      preLoaderRoute: typeof AgendamentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -197,6 +217,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgendamentosRoute: AgendamentosRoute,
   AtendimentosRoute: AtendimentosRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   ContatosIniciaisRoute: ContatosIniciaisRoute,

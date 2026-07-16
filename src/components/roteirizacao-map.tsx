@@ -1,11 +1,16 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { ConfirmedService, Technician } from "@/types";
 import { brCityCoords } from "@/services/br-city-coords";
-import { normalize, extractCity, getServiceDestination } from "@/services/distance";
+import { normalize, extractCity, getServiceDestination, type RouteDistance } from "@/services/distance";
+import type { EquipmentBalance } from "@/services/equipment-balance";
+
+const SUGGEST_MAX_METERS = 150_000;
 
 interface Props {
   technicians: Technician[];
   clients: ConfirmedService[];
+  balances?: Map<string, EquipmentBalance>;
+  routesByTech?: Record<string, Record<string, RouteDistance | null>>;
 }
 
 interface Point {
@@ -16,6 +21,7 @@ interface Point {
   details: string;
   city: string;
   state: string;
+  extra?: string;
 }
 
 const STATE_CAPITAL: Record<string, string> = {
@@ -77,7 +83,7 @@ function resolveCoords(city: string, state: string, destQuery?: string): { lat: 
   return null;
 }
 
-export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clients }: Props) {
+export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clients, balances, routesByTech }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const [ready, setReady] = useState(false);
@@ -101,6 +107,21 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     for (const t of technicians) {
       const coords = resolveCoords(t.cityOriginal || "", t.state || "");
       if (coords) {
+        const bal = balances?.get(t.id);
+        const extraLines: string[] = [];
+        if (bal) {
+          if (bal.inventory.s8Eco > 0 || bal.inventory.g5Plus > 0) {
+            extraLines.push(`Estoque: ${bal.inventory.s8Eco} S8 ECO${bal.inventory.g5Plus > 0 ? ` + ${bal.inventory.g5Plus} G5` : ""}`);
+          }
+          if (bal.used.s8Eco > 0 || bal.used.g5Plus > 0) {
+            extraLines.push(`Usados: ${bal.used.s8Eco} S8 ECO${bal.used.g5Plus > 0 ? ` + ${bal.used.g5Plus} G5` : ""}`);
+          }
+          if (bal.available.s8Eco > 0 || bal.available.g5Plus > 0) {
+            extraLines.push(`Disponível: ${bal.available.s8Eco} S8 ECO${bal.available.g5Plus > 0 ? ` + ${bal.available.g5Plus} G5` : ""}`);
+          } else if (bal.inventory.s8Eco > 0 || bal.inventory.g5Plus > 0) {
+            extraLines.push("Sem saldo disponível");
+          }
+        }
         pts.push({
           ...coords,
           label: t.firstName || t.nameOriginal,
@@ -108,6 +129,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           details: `${t.cityOriginal || ""}/${t.state || ""}`,
           city: t.cityOriginal || "",
           state: t.state || "",
+          extra: extraLines.join("<br/>"),
         });
         techCount.resolved++;
       } else {
@@ -119,6 +141,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       const destQuery = getServiceDestination(c);
       const coords = resolveCoords(c.cityDetected || "", c.stateDetected || "", destQuery);
       if (coords) {
+        const extraLines: string[] = [];
+        if (c.serviceStatus) extraLines.push(`Status: ${c.serviceStatus}`);
+        if (c.technicianOriginal) extraLines.push(`Técnico: ${c.technicianOriginal}`);
         pts.push({
           ...coords,
           label: c.responsibleOriginal,
@@ -126,6 +151,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           details: `${c.cityDetected || ""}/${c.stateDetected || ""}`,
           city: c.cityDetected || "",
           state: c.stateDetected || "",
+          extra: extraLines.join("<br/>"),
         });
         clientCount.resolved++;
       } else {
@@ -148,7 +174,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       console.warn("[MAPA] Técnicos sem coordenadas:", unresolvedT);
     }
     return { points: pts, unresolvedClients: unresolved, unresolvedTechs: unresolvedT };
-  }, [technicians, clients]);
+  }, [technicians, clients, balances]);
 
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -205,6 +231,13 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     setRenderTick((t) => t + 1);
   }, [technicians, clients]);
 
+  const routeLinesLayerRef = useRef<L.LayerGroup | null>(null);
+  const routeAnimRef = useRef<number | null>(null);
+  const fadeAnimRef = useRef<number | null>(null);
+  const routePolylinesRef = useRef<{ polyline: L.Polyline; fadeStep: number }[]>([]);
+  const routeArrowRefs = useRef<L.Marker[]>([]);
+  const [routeTick, setRouteTick] = useState(0);
+
   // Update markers when points or mapReady or renderTick change (without destroying the map)
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -250,10 +283,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       });
 
       const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
-      marker.bindTooltip(
-        `<strong>${p.label}</strong><br/>${p.details}<br/><em>${isTech ? "Técnico" : "Cliente"}</em>`,
-        { direction: "top" },
-      );
+      const tooltipHtml = `<strong>${p.label}</strong><br/>${p.details}<br/><em>${isTech ? "Técnico" : "Cliente"}</em>${p.extra ? `<br/>${p.extra}` : ""}`;
+      marker.bindTooltip(tooltipHtml, { direction: "top" });
     }
 
     // Debug: check actual marker count vs expected
@@ -272,11 +303,197 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     }
   }, [points, mapReady, renderTick]);
 
+  // Animated suggestion lines for nearby routes (<=200km) — restarts on tick or route change
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const L = leafletRef.current;
+    if (!map || !L || !routesByTech) return;
+    if (Object.keys(routesByTech).length === 0) return;
+
+    // Cleanup previous animation
+    if (routeAnimRef.current !== null) { cancelAnimationFrame(routeAnimRef.current); routeAnimRef.current = null; }
+    if (fadeAnimRef.current !== null) { cancelAnimationFrame(fadeAnimRef.current); fadeAnimRef.current = null; }
+
+    // Remove old arrows
+    for (const a of routeArrowRefs.current) { map.removeLayer(a); }
+    routeArrowRefs.current = [];
+
+    // Remove old route line layer
+    if (routeLinesLayerRef.current) {
+      map.removeLayer(routeLinesLayerRef.current);
+      routeLinesLayerRef.current = null;
+    }
+    routePolylinesRef.current = [];
+
+    // Only show routes for clients with AGENDANDO or AGENDAR status
+    const eligibleClientIds = new Set(
+      clients
+        .filter((c) => c.serviceStatus === "AGENDAR" || c.serviceStatus === "AGENDANDO")
+        .map((c) => c.id),
+    );
+
+    // Only consider techs with available balance
+    const eligibleTechIds = new Set<string>();
+    for (const t of technicians) {
+      const b = balances?.get(t.id);
+      if (b && (b.available.s8Eco > 0 || b.available.g5Plus > 0)) {
+        eligibleTechIds.add(t.id);
+      }
+    }
+
+    const techCoordsMap = new Map<string, { lat: number; lng: number }>();
+    for (const t of technicians) {
+      const coords = resolveCoords(t.cityOriginal || "", t.state || "");
+      if (coords) techCoordsMap.set(t.id, coords);
+    }
+
+    const clientCoordsMap = new Map<string, { lat: number; lng: number }>();
+    for (const c of clients) {
+      const destQuery = getServiceDestination(c);
+      const coords = resolveCoords(c.cityDetected || "", c.stateDetected || "", destQuery);
+      if (coords) clientCoordsMap.set(c.id, coords);
+    }
+
+    const routeLayer = L.layerGroup().addTo(map);
+    routeLinesLayerRef.current = routeLayer;
+
+    // Pick the nearest eligible tech per client (≤150km, AGENDANDO/AGENDAR)
+    type BestRoute = { clientId: string; dist: RouteDistance; clientCoord: { lat: number; lng: number }; techCoord: { lat: number; lng: number } };
+    const bestPerClient = new Map<string, BestRoute>();
+
+    for (const [techId, techRoutes] of Object.entries(routesByTech)) {
+      if (!eligibleTechIds.has(techId)) continue;
+      const techCoord = techCoordsMap.get(techId);
+      if (!techCoord) continue;
+
+      for (const [clientId, dist] of Object.entries(techRoutes)) {
+        if (!eligibleClientIds.has(clientId)) continue;
+        if (!dist || dist.distanceMeters > SUGGEST_MAX_METERS) continue;
+        const clientCoord = clientCoordsMap.get(clientId);
+        if (!clientCoord) continue;
+
+        const existing = bestPerClient.get(clientId);
+        if (!existing || dist.distanceMeters < existing.dist.distanceMeters) {
+          bestPerClient.set(clientId, { clientId, dist, clientCoord, techCoord });
+        }
+      }
+    }
+
+    if (bestPerClient.size === 0) return;
+
+    // For each route: create 4 arrows evenly spaced, no dashed line
+    const ARROWS_PER_ROUTE = 4;
+    const arrowPhase: number[] = [0, 0.25, 0.5, 0.75]; // phase offset so they spread
+    const arrows: L.Marker[] = [];
+
+    for (const [, { techCoord, clientCoord }] of bestPerClient) {
+      const dLat = clientCoord.lat - techCoord.lat;
+      const dLng = clientCoord.lng - techCoord.lng;
+      const angle = Math.atan2(clientCoord.lng - techCoord.lng, clientCoord.lat - techCoord.lat) * (180 / Math.PI);
+
+      const arrowIcon = L.divIcon({
+        className: "",
+        html: `<div style="
+          width: 0; height: 0;
+          border-left: 8px solid transparent;
+          border-right: 8px solid transparent;
+          border-bottom: 14px solid #2563eb;
+          transform: rotate(${angle}deg);
+          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+        "></div>`,
+        iconSize: [16, 14],
+        iconAnchor: [8, 14],
+      });
+
+      for (let a = 0; a < ARROWS_PER_ROUTE; a++) {
+        const t = 0.1 + a * 0.25; // positions: 10%, 35%, 60%, 85%
+        const lat = techCoord.lat + dLat * t;
+        const lng = techCoord.lng + dLng * t;
+        const m = L.marker([lat, lng], { icon: arrowIcon, interactive: false }).addTo(routeLayer);
+        arrows.push(m);
+      }
+    }
+
+    routeArrowRefs.current = arrows;
+
+    // Animation: all arrows march forward together for 10s, then fade and restart
+    const ANIM_DURATION = 10000;
+    const startTime = performance.now();
+    // Snapshot start/end coords per route for animation
+    const routeCoords: { sLat: number; sLng: number; dLat: number; dLng: number }[] = [];
+    for (const [, { techCoord, clientCoord }] of bestPerClient) {
+      routeCoords.push({
+        sLat: techCoord.lat,
+        sLng: techCoord.lng,
+        dLat: clientCoord.lat - techCoord.lat,
+        dLng: clientCoord.lng - techCoord.lng,
+      });
+    }
+
+    function animateArrows(now: number) {
+      const elapsed = now - startTime;
+      if (elapsed < ANIM_DURATION) {
+        const progress = elapsed / ANIM_DURATION;
+        let arrowIdx = 0;
+        for (let r = 0; r < routeCoords.length; r++) {
+          const { sLat, sLng, dLat, dLng } = routeCoords[r];
+          for (let a = 0; a < ARROWS_PER_ROUTE; a++) {
+            // Each arrow has a phase offset; position wraps around
+            let t = (progress + arrowPhase[a]) % 1;
+            const arrow = arrows[arrowIdx];
+            if (arrow) {
+              arrow.setLatLng([sLat + dLat * t, sLng + dLng * t]);
+            }
+            arrowIdx++;
+          }
+        }
+        routeAnimRef.current = requestAnimationFrame(animateArrows);
+      } else {
+        // Remove all arrows, then tick restart
+        for (const a of arrows) { map.removeLayer(a); }
+        arrows.length = 0;
+        routeArrowRefs.current = [];
+
+        if (routeLinesLayerRef.current) {
+          map.removeLayer(routeLinesLayerRef.current);
+          routeLinesLayerRef.current = null;
+        }
+        setRouteTick((t) => t + 1);
+      }
+    }
+
+    routeAnimRef.current = requestAnimationFrame(animateArrows);
+  }, [routesByTech, mapReady, routeTick, technicians, clients, balances]);
+
+  // Cleanup animation on unmount
+  useEffect(() => {
+    return () => {
+      if (routeAnimRef.current !== null) cancelAnimationFrame(routeAnimRef.current);
+      if (fadeAnimRef.current !== null) cancelAnimationFrame(fadeAnimRef.current);
+    };
+  }, []);
+
+  // Summary inventory
+  const inventorySummary = useMemo(() => {
+    if (!balances || balances.size === 0) return null;
+    let totalS8 = 0, totalG5 = 0, usedS8 = 0, usedG5 = 0, pendS8 = 0, pendG5 = 0;
+    for (const b of balances.values()) {
+      totalS8 += b.inventory.s8Eco;
+      totalG5 += b.inventory.g5Plus;
+      usedS8 += b.used.s8Eco;
+      usedG5 += b.used.g5Plus;
+      pendS8 += b.pending.s8Eco;
+      pendG5 += b.pending.g5Plus;
+    }
+    if (totalS8 === 0 && totalG5 === 0) return null;
+    return { totalS8, totalG5, usedS8, usedG5, pendS8, pendG5 };
+  }, [balances]);
+
   // Legend
   return (
     <div className="space-y-1">
       <div ref={mapRef} style={{ width: "100%", height: "500px", borderRadius: "8px" }} className="border" />
-      <div className="flex gap-4 text-xs text-muted-foreground px-1">
+      <div className="flex gap-4 text-xs text-muted-foreground px-1 flex-wrap">
         <span className="flex items-center gap-1">
           <span style={{ display: "inline-block", width: 12, height: 12, background: "#2563eb", borderRadius: "50%", border: "1px solid white" }} />
           Técnico
@@ -298,6 +515,14 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           </span>
         )}
       </div>
+      {inventorySummary && (
+        <div className="flex gap-3 text-[10px] text-muted-foreground px-1 flex-wrap border-t pt-1">
+          <span className="font-semibold">Inventário total:</span>
+          <span className="text-green-600">Disponível: {inventorySummary.totalS8 - inventorySummary.usedS8 - inventorySummary.pendS8} S8 ECO / {inventorySummary.totalG5 - inventorySummary.usedG5 - inventorySummary.pendG5} G5+</span>
+          {inventorySummary.usedS8 > 0 && <span>Usados: {inventorySummary.usedS8} S8 ECO / {inventorySummary.usedG5} G5+</span>}
+          {inventorySummary.pendS8 > 0 && <span className="text-amber-500">Pendentes: {inventorySummary.pendS8} S8 ECO / {inventorySummary.pendG5} G5+</span>}
+        </div>
+      )}
     </div>
   );
 });

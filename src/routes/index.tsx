@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Users, ClipboardCheck, Wrench, Upload, ClipboardPaste, Shield } from "lucide-react";
+import { Users, ClipboardCheck, Wrench, Upload, ClipboardPaste, Shield, ArrowLeftRight } from "lucide-react";
 import { ImportDialog } from "@/components/import-dialog";
 import { useAppStore } from "@/stores/app-store";
 import {
@@ -253,6 +253,32 @@ function HomePage() {
           </Card>
         ))}
       </div>
+
+      {/* Distribuição / Atribuição */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="w-5 h-5 text-primary" />
+            <CardTitle className="text-base">Distribuir atendimentos</CardTitle>
+          </div>
+          <CardDescription>
+            Atribua técnicos aos clientes, ajuste cronograma e visualize a distribuição por
+            técnico.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Button size="sm" asChild>
+              <Link to="/distribuicao">
+                <ArrowLeftRight className="w-4 h-4 mr-2" /> Atribuir
+              </Link>
+            </Button>
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/roteirizacao">Roteirização</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {openImport && (
         <ImportDialog

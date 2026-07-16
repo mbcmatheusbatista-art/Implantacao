@@ -29,17 +29,20 @@ const SYNONYMS: Record<FieldKey, string[]> = {
     "TÉCNICO",
     "TECNICO A",
     "TÉCNICO A",
+    "TECNICO(A)",
     "NOME DO TECNICO",
     "NOME DO TÉCNICO",
   ],
   city: ["CIDADE", "MUNICIPIO", "MUNICÍPIO", "LOCALIDADE"],
   state: ["UF", "ESTADO"],
   quantity: ["QUANT", "QUANTIDADE", "QTD", "ESTOQUE", "SALDO"],
+  status: ["STATUS", "SITUACAO", "SITUAÇÃO", "ESTADO DO SERVICO", "ESTADO DO SERVIÇO"],
+  dataHora: ["DATA E HORA", "DATA/HORA", "DATA", "HORARIO", "HORÁRIO"],
 };
 
 const KIND_FIELDS: Record<ImportKind, FieldKey[]> = {
   initial: ["plate", "responsible", "phone", "matrix"],
-  confirmed: ["plate", "responsible", "phone", "matrix", "address", "equipment"],
+  confirmed: ["plate", "responsible", "phone", "matrix", "address", "equipment", "technician", "status", "dataHora"],
   technicians: ["technician", "phone", "city", "state", "quantity"],
 };
 

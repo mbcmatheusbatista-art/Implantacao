@@ -3,10 +3,11 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Map, Loader2 } from "lucide-react";
+import { Map, Loader2, Package } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { equipmentLabel } from "@/utils/normalize-equipment";
 import { formatPhoneForDisplay } from "@/utils/normalize-phone";
+import { calculateAllBalances } from "@/services/equipment-balance";
 
 const RoteirizacaoMap = lazy(() =>
   import("@/components/roteirizacao-map").then((m) => ({ default: m.RoteirizacaoMap })),
@@ -188,6 +189,11 @@ function RoteirizacaoPage() {
     [store.confirmedServices],
   );
 
+  const balances = useMemo(
+    () => calculateAllBalances(store.technicians, store.confirmedServices),
+    [store.technicians, store.confirmedServices],
+  );
+
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Roteirização por Técnico</h1>
@@ -285,6 +291,8 @@ function RoteirizacaoPage() {
         <RoteirizacaoMap
           technicians={store.technicians}
           clients={filteredServices}
+          balances={balances}
+          routesByTech={routes}
         />
       </Suspense>
 
@@ -298,6 +306,7 @@ function RoteirizacaoPage() {
         )}
 
         {store.technicians.map((tech) => {
+          const balance = balances.get(tech.id);
           const techRoutes = routes[tech.id] || {};
           const clientsWithDistance: {
             client: ConfirmedService;
@@ -344,6 +353,19 @@ function RoteirizacaoPage() {
                       tech.phoneOriginal ||
                       "—"}
                   </Badge>
+                  {balance && (
+                    <Badge variant={balance.available.s8Eco > 0 || balance.available.g5Plus > 0 ? "default" : "destructive"} className="text-[10px] gap-1">
+                      <Package className="w-3 h-3" />
+                      {balance.available.s8Eco > 0 || balance.available.g5Plus > 0
+                        ? `${balance.available.s8Eco} S8 ECO${balance.available.g5Plus > 0 ? ` + ${balance.available.g5Plus} G5` : ""}`
+                        : "Sem saldo"}
+                    </Badge>
+                  )}
+                  {balance && balance.available.s8Eco + balance.available.g5Plus > 0 && nearby.length > 0 && (
+                    <Badge variant="default" className="text-[10px] bg-green-600 hover:bg-green-600 gap-1">
+                      {nearby.length} cliente{nearby.length !== 1 ? "s" : ""} · {nearby[0].distance?.distanceText || "?"}
+                    </Badge>
+                  )}
                   <span className="text-xs text-muted-foreground ml-auto">
                     {nearby.length} próximo
                     {nearby.length !== 1 ? "s" : ""}
@@ -353,6 +375,14 @@ function RoteirizacaoPage() {
                     {pending > 0 && ` · ${pending} calculando...`}
                   </span>
                 </div>
+                {balance && (balance.used.s8Eco > 0 || balance.used.g5Plus > 0 || balance.pending.s8Eco > 0 || balance.pending.g5Plus > 0) && (
+                  <div className="flex gap-2 text-[10px] text-muted-foreground mt-1">
+                    {balance.used.s8Eco > 0 && <span>Usados: {balance.used.s8Eco} S8 ECO</span>}
+                    {balance.used.g5Plus > 0 && <span>Usados: {balance.used.g5Plus} G5+</span>}
+                    {balance.pending.s8Eco > 0 && <span className="text-amber-500">Pendentes: {balance.pending.s8Eco} S8 ECO</span>}
+                    {balance.pending.g5Plus > 0 && <span className="text-amber-500">Pendentes: {balance.pending.g5Plus} G5+</span>}
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="p-0">
                 {nearby.length > 0 && (
@@ -411,6 +441,15 @@ function renderClientRow(
           <Badge variant="outline" className="text-[10px]">
             {equipmentLabel(client.equipmentNormalized)}
           </Badge>
+          {client.serviceStatus && (
+            <Badge variant={
+              client.serviceStatus === "AGENDADO" ? "default" :
+              client.serviceStatus === "AGENDANDO" ? "secondary" :
+              "outline"
+            } className="text-[10px]">
+              {client.serviceStatus}
+            </Badge>
+          )}
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">
           {client.fullAddress ||

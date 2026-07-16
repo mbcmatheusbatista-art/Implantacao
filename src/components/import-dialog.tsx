@@ -36,6 +36,8 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   city: "Cidade",
   state: "UF",
   quantity: "Quantidade",
+  status: "Status",
+  dataHora: "Data e hora",
 };
 
 const DIALOG_DEBUG = true;

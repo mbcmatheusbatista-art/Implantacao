@@ -22,7 +22,7 @@ export const Route = createFileRoute("/atendimentos")({
   component: ConfirmedServicesPage,
 });
 
-type Filter = "all" | "with_address" | "no_address" | "s8_eco" | "s8_eco_g5" | "unassigned";
+type Filter = "all" | "with_address" | "no_address" | "s8_eco" | "s8_eco_g5" | "unassigned" | "agendado" | "agendando" | "agendar";
 
 function ConfirmedServicesPage() {
   const store = useAppStore();
@@ -47,6 +47,8 @@ function ConfirmedServicesPage() {
           s.stateDetected,
           s.equipmentOriginal,
           s.fullAddress,
+          s.technicianOriginal,
+          s.serviceStatus,
         ]
           .filter(Boolean)
           .join(" ")
@@ -64,6 +66,12 @@ function ConfirmedServicesPage() {
           return s.equipmentNormalized === "S8_ECO_G5_PLUS";
         case "unassigned":
           return !assignedIds.has(s.id);
+        case "agendado":
+          return s.serviceStatus === "AGENDADO";
+        case "agendando":
+          return s.serviceStatus === "AGENDANDO";
+        case "agendar":
+          return s.serviceStatus === "AGENDAR";
         default:
           return true;
       }
@@ -119,6 +127,9 @@ function ConfirmedServicesPage() {
                 <SelectItem value="s8_eco">S8 ECO</SelectItem>
                 <SelectItem value="s8_eco_g5">S8 ECO + G5 Plus</SelectItem>
                 <SelectItem value="unassigned">Sem técnico</SelectItem>
+                <SelectItem value="agendado">AGENDADO</SelectItem>
+                <SelectItem value="agendando">AGENDANDO</SelectItem>
+                <SelectItem value="agendar">AGENDAR</SelectItem>
               </SelectContent>
             </Select>
             <Badge variant="secondary">{filtered.length} exibidos</Badge>
@@ -134,6 +145,7 @@ function ConfirmedServicesPage() {
                     <th className="p-2">Endereço</th>
                     <th className="p-2">Cidade/UF</th>
                     <th className="p-2">Equipamento</th>
+                    <th className="p-2">Status</th>
                     <th className="p-2">Técnico</th>
                   </tr>
                 </thead>
@@ -170,17 +182,37 @@ function ConfirmedServicesPage() {
                           </Badge>
                         </td>
                         <td className="p-2">
-                          {t ? (
-                            <Badge variant="default">{t.firstName || t.nameOriginal}</Badge>
+                          {s.serviceStatus ? (
+                            <Badge variant={
+                              s.serviceStatus === "AGENDADO" ? "default" :
+                              s.serviceStatus === "AGENDANDO" ? "secondary" :
+                              "outline"
+                            } className="text-[10px]">
+                              {s.serviceStatus}
+                            </Badge>
                           ) : (
-                            <Link
-                              to="/distribuicao"
-                              search={{ serviceId: s.id }}
-                              className="text-xs text-primary hover:underline"
-                            >
-                              Atribuir
-                            </Link>
+                            <span className="text-muted-foreground text-xs">—</span>
                           )}
+                        </td>
+                        <td className="p-2">
+                          <div className="flex flex-col gap-1">
+                            {s.technicianOriginal && (
+                              <span className="text-xs text-muted-foreground">
+                                {s.technicianOriginal}
+                              </span>
+                            )}
+                            {t ? (
+                              <Badge variant="default">{t.firstName || t.nameOriginal}</Badge>
+                            ) : !s.technicianOriginal ? (
+                              <Link
+                                to="/distribuicao"
+                                search={{ serviceId: s.id }}
+                                className="text-xs text-primary hover:underline"
+                              >
+                                Atribuir
+                              </Link>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );

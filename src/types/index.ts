@@ -25,6 +25,17 @@ export interface InitialContact {
 
 export type EquipmentType = "S8_ECO" | "S8_ECO_G5_PLUS" | "NAO_IDENTIFICADO";
 
+export type ServiceStatus = "AGENDAR" | "AGENDANDO" | "AGENDADO" | "";
+
+export interface EquipmentBreakdown {
+  s8EcoSets: number;
+  g5PlusSets: number;
+  totalKits: number;
+  removals: number;
+  hasG5Plus: boolean;
+  rawDescription: string;
+}
+
 export interface ConfirmedService {
   id: string;
   plateOriginal: string;
@@ -39,6 +50,10 @@ export interface ConfirmedService {
   stateDetected: string | null;
   equipmentOriginal: string;
   equipmentNormalized: EquipmentType;
+  technicianOriginal?: string;
+  technicianNormalized?: string;
+  serviceStatus?: ServiceStatus;
+  dataHora?: string;
   validationIssues: string[];
 }
 
@@ -58,6 +73,7 @@ export interface Technician {
   quantityOriginal: string;
   availableQuantity: number | null;
   stockStatus: TechnicianStockStatus;
+  equipmentBreakdown?: EquipmentBreakdown | null;
   validationIssues: string[];
 }
 
@@ -79,7 +95,9 @@ export type FieldKey =
   | "technician"
   | "city"
   | "state"
-  | "quantity";
+  | "quantity"
+  | "status"
+  | "dataHora";
 
 export interface ImportDiagnostic {
   fileName: string;
