@@ -171,8 +171,9 @@ function AgendamentosPage() {
   const debugOriginais = useMemo(() => {
     const comOriginal = services.filter(s => s.serviceStatusOriginal).length;
     const semOriginal = services.filter(s => !s.serviceStatusOriginal).length;
-    const exemplos = services.filter(s => s.serviceStatusOriginal).slice(0, 3).map(s => s.serviceStatusOriginal);
-    return { comOriginal, semOriginal, exemplos };
+    const variados = services.filter(s => s.serviceStatusOriginal && s.serviceStatusOriginal !== s.serviceStatus).slice(0, 5).map(s => s.serviceStatusOriginal);
+    const totalDif = services.filter(s => s.serviceStatusOriginal && s.serviceStatusOriginal !== s.serviceStatus).length;
+    return { comOriginal, semOriginal, variados, totalDif };
   }, [services]);
 
   const filteredServices = useMemo(() => {
@@ -281,7 +282,7 @@ function AgendamentosPage() {
         <CardContent className="py-2 text-xs">
           <strong>DEBUG:</strong> {services.length} serviços carregados.
           {debugOriginais.comOriginal > 0 ? (
-            <> {debugOriginais.comOriginal} com statusOriginal. Ex: {debugOriginais.exemplos.join(" | ")}</>
+            <> {debugOriginais.comOriginal} com statusOriginal. {debugOriginais.totalDif} diferentes do status normalizado. Ex: <span className="text-blue-700">{debugOriginais.variados.join(" | ")}</span></>
           ) : (
             <> <span className="text-red-600 font-bold">NENHUM serviço tem serviceStatusOriginal!</span> 
             Reimporte o "Cliente com endereço" nesta página (porta 8080) para ver os status originais.</>
