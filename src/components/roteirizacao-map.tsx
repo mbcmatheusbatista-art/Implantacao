@@ -6,6 +6,22 @@ import type { EquipmentBalance } from "@/services/equipment-balance";
 
 const SUGGEST_MAX_METERS = 150_000;
 
+const STATE_REGION: Record<string, string> = {
+  AC: "Norte", AP: "Norte", AM: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
+  AL: "Nordeste", BA: "Nordeste", CE: "Nordeste", MA: "Nordeste", PB: "Nordeste", PE: "Nordeste", PI: "Nordeste", RN: "Nordeste", SE: "Nordeste",
+  DF: "Centro-Oeste", GO: "Centro-Oeste", MT: "Centro-Oeste", MS: "Centro-Oeste",
+  ES: "Sudeste", MG: "Sudeste", RJ: "Sudeste", SP: "Sudeste",
+  PR: "Sul", RS: "Sul", SC: "Sul",
+};
+
+const REGION_COLORS: Record<string, string> = {
+  "Norte": "#2E7D9E",
+  "Nordeste": "#C0723C",
+  "Centro-Oeste": "#8A7A3A",
+  "Sudeste": "#3D8F53",
+  "Sul": "#7A4F9E",
+};
+
 interface Props {
   technicians: Technician[];
   clients: ConfirmedService[];
@@ -177,6 +193,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
   }, [technicians, clients, balances]);
 
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const stateLayerRef = useRef<L.GeoJSON | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const leafletRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -207,6 +224,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       L.control.zoom({ position: "topright" }).addTo(map);
 
       leafletRef.current = L;
+      map.createPane("statesPane");
+      const pane = map.getPane("statesPane");
+      if (pane) pane.style.zIndex = "300";
       const layerGroup = L.layerGroup().addTo(map);
       markerLayerRef.current = layerGroup;
       mapInstanceRef.current = map;
@@ -230,6 +250,49 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
   useEffect(() => {
     setRenderTick((t) => t + 1);
   }, [technicians, clients]);
+
+  // Load Brazilian states GeoJSON for border rendering
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const L = leafletRef.current;
+    if (!map || !L) return;
+    if (stateLayerRef.current) return;
+
+    let cancelled = false;
+
+    async function loadStates() {
+      try {
+        const res = await fetch("https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson");
+        if (cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        const layer = L.geoJSON(data, {
+          pane: "statesPane",
+          interactive: false,
+          style: (feature: unknown) => {
+            const props = (feature as Record<string, unknown>)?.properties as Record<string, string> || {};
+            const stateAbbr = (props.sigla || props.SIGLA || props.abbrev || props.UF || props.uf || "").toUpperCase();
+            const region = STATE_REGION[stateAbbr];
+            const color = region ? REGION_COLORS[region] : "#777";
+            return {
+              color,
+              weight: 2.5,
+              opacity: 0.7,
+              fill: false,
+            };
+          },
+        }).addTo(map);
+        stateLayerRef.current = layer;
+      } catch (err) {
+        console.warn("[MAPA] Erro ao carregar estados:", err);
+      }
+    }
+
+    loadStates();
+
+    return () => { cancelled = true; };
+  }, [mapReady]);
 
   const routeLinesLayerRef = useRef<L.LayerGroup | null>(null);
   const routeAnimRef = useRef<number | null>(null);
@@ -502,6 +565,12 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           <span style={{ display: "inline-block", width: 12, height: 12, background: "#dc2626", borderRadius: 3 }} />
           Cliente
         </span>
+        {Object.entries(REGION_COLORS).map(([region, color]) => (
+          <span key={region} className="flex items-center gap-1">
+            <span style={{ display: "inline-block", width: 16, height: 3, background: color, borderRadius: 1 }} />
+            {region}
+          </span>
+        ))}
         <span>{points.length} ponto(s) no mapa</span>
         <span>{technicians.length} técnico(s) · {clients.length} cliente(s) na lista</span>
         {unresolvedTechs.length > 0 && (

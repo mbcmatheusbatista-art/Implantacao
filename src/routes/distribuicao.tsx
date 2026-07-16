@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle, MessageCircle, Undo2, Info, Map } from "lucide-react";
 import { toast } from "sonner";
@@ -89,6 +90,7 @@ function DistributionPage() {
   const [showDistantes, setShowDistantes] = useState(false);
   const [loadingRoutes, setLoadingRoutes] = useState(false);
   const [matrizFilter, setMatrizFilter] = useState<"all" | "none" | Set<string>>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const routesCache = useRef<Record<string, Record<string, { distance: RouteDistance | null; mode: RouteMode }>>>({});
 
   // Reset routes on service switch; the main effect restores from cache or recalculates
@@ -430,7 +432,19 @@ function DistributionPage() {
               <CardTitle className="text-base">
                 Clientes com endereço ({store.confirmedServices.length})
               </CardTitle>
-              <div className="mt-2 space-y-1">
+              <div className="mt-2 space-y-2">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    <SelectItem value="AGENDADO">AGENDADO</SelectItem>
+                    <SelectItem value="AGENDANDO">AGENDANDO</SelectItem>
+                    <SelectItem value="AGENDAR">AGENDAR</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="space-y-1">
                 <label className="flex items-center gap-2 text-xs cursor-pointer">
                   <input
                     type="checkbox"
@@ -489,10 +503,15 @@ function DistributionPage() {
                   </label>
                 )}
               </div>
+            </div>
             </CardHeader>
             <CardContent className="p-0 max-h-[70vh] overflow-y-auto">
               <ul className="divide-y">
                 {store.confirmedServices
+                  .filter((s) => {
+                    if (statusFilter !== "all" && s.serviceStatus !== statusFilter) return false;
+                    return true;
+                  })
                   .filter((s) => {
                     if (matrizFilter === "all") return true;
                     if (matrizFilter === "none") return false;
