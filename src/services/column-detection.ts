@@ -38,11 +38,21 @@ const SYNONYMS: Record<FieldKey, string[]> = {
   quantity: ["QUANT", "QUANTIDADE", "QTD", "ESTOQUE", "SALDO"],
   status: ["STATUS", "SITUACAO", "SITUAÇÃO", "ESTADO DO SERVICO", "ESTADO DO SERVIÇO"],
   dataHora: ["DATA E HORA", "DATA/HORA", "DATA", "HORARIO", "HORÁRIO"],
+  observations: [
+    "OBSERVACOES",
+    "OBSERVAÇÕES",
+    "PARTICULARIDADES",
+    "OBSERVACOES/PARTICULARIDADES",
+    "OBSERVAÇÕES/PARTICULARIDADES",
+    "OBS",
+    "OBSERVACAO",
+    "OBSERVAÇÃO",
+  ],
 };
 
 const KIND_FIELDS: Record<ImportKind, FieldKey[]> = {
   initial: ["plate", "responsible", "phone", "matrix"],
-  confirmed: ["plate", "responsible", "phone", "matrix", "address", "equipment", "technician", "status", "dataHora"],
+  confirmed: ["plate", "responsible", "phone", "matrix", "address", "equipment", "technician", "status", "dataHora", "observations"],
   technicians: ["technician", "phone", "city", "state", "quantity"],
 };
 

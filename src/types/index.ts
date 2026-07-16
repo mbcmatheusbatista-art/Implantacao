@@ -55,6 +55,7 @@ export interface ConfirmedService {
   serviceStatus?: ServiceStatus;
   serviceStatusOriginal?: string;
   dataHora?: string;
+  observationsOriginal?: string;
   validationIssues: string[];
 }
 
@@ -98,7 +99,8 @@ export type FieldKey =
   | "state"
   | "quantity"
   | "status"
-  | "dataHora";
+  | "dataHora"
+  | "observations";
 
 export interface ImportDiagnostic {
   fileName: string;

@@ -257,6 +257,7 @@ export function buildConfirmedServices(
     const technicianRaw = getField(row, mapping, "technician");
     const statusRaw = getField(row, mapping, "status");
     const dataHoraRaw = getField(row, mapping, "dataHora");
+    const observationsRaw = getField(row, mapping, "observations");
     if (!plateRaw && !respRaw && !phoneRaw && !addressRaw) {
       skipped++;
       return;
@@ -311,6 +312,7 @@ export function buildConfirmedServices(
       serviceStatus,
       serviceStatusOriginal: statusRaw || undefined,
       dataHora: dataHoraRaw || undefined,
+      observationsOriginal: observationsRaw || undefined,
       validationIssues: issues,
     });
     imported++;
