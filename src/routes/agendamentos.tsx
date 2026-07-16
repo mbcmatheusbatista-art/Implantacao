@@ -114,14 +114,18 @@ function AgendamentosPage() {
     return "AGENDAR";
   }
 
+  const fmtRe = /\u200BFORMAT:(green|red|orange)\u200B/g;
+  function cl(text: string | null | undefined): string {
+    if (!text) return "";
+    return text.replace(fmtRe, "").trim();
+  }
+
   function getDataHora(svc: ConfirmedService): string {
-    const raw = svc.dataHora || "";
-    return raw.replace(/\u200BFORMAT:(green|red|orange)\u200B/g, "").trim();
+    return cl(svc.dataHora);
   }
 
   function getStatusDisplay(svc: ConfirmedService): string {
-    const raw = svc.serviceStatusOriginal || "";
-    const cleaned = raw.replace(/\u200BFORMAT:(green|red|orange)\u200B/g, "").trim();
+    const cleaned = cl(svc.serviceStatusOriginal);
     return cleaned || getEffectiveStatus(svc);
   }
 
@@ -410,14 +414,14 @@ function AgendamentosPage() {
                         {getDataHora(svc) || "—"}
                       </td>
                       <td className="py-2 px-3 border font-mono text-xs whitespace-nowrap">
-                        {svc.plateOriginal || "—"}
+                        {cl(svc.plateOriginal) || "—"}
                       </td>
                       <td className="py-2 px-3 border break-words text-xs">
-                        {svc.fullAddress || "—"}
+                        {cl(svc.fullAddress) || "—"}
                       </td>
-                      <td className="py-2 px-3 border truncate max-w-[160px]" title={svc.technicianOriginal || "—"}>
-                        {svc.technicianOriginal || "—"}
-                        {techMap.byName.has((svc.technicianOriginal || "").toLowerCase().trim()) && (
+                      <td className="py-2 px-3 border truncate max-w-[160px]" title={cl(svc.technicianOriginal) || "—"}>
+                        {cl(svc.technicianOriginal) || "—"}
+                        {techMap.byName.has(cl(svc.technicianOriginal).toLowerCase()) && (
                           <span className="ml-1 text-[10px] text-green-600">✓</span>
                         )}
                       </td>
