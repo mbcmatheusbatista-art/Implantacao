@@ -168,6 +168,13 @@ function AgendamentosPage() {
     return namesMatch(svcName, value);
   }
 
+  const debugOriginais = useMemo(() => {
+    const comOriginal = services.filter(s => s.serviceStatusOriginal).length;
+    const semOriginal = services.filter(s => !s.serviceStatusOriginal).length;
+    const exemplos = services.filter(s => s.serviceStatusOriginal).slice(0, 3).map(s => s.serviceStatusOriginal);
+    return { comOriginal, semOriginal, exemplos };
+  }, [services]);
+
   const filteredServices = useMemo(() => {
     let result = [...services];
     result = result.filter((s) => {
@@ -269,6 +276,18 @@ function AgendamentosPage() {
           O telefone do técnico vem do "Contatar aos técnicos".
         </p>
       </div>
+
+      <Card className="border-2 border-yellow-400 bg-yellow-50">
+        <CardContent className="py-2 text-xs">
+          <strong>DEBUG:</strong> {services.length} serviços carregados.
+          {debugOriginais.comOriginal > 0 ? (
+            <> {debugOriginais.comOriginal} com statusOriginal. Ex: {debugOriginais.exemplos.join(" | ")}</>
+          ) : (
+            <> <span className="text-red-600 font-bold">NENHUM serviço tem serviceStatusOriginal!</span> 
+            Reimporte o "Cliente com endereço" nesta página (porta 8080) para ver os status originais.</>
+          )}
+        </CardContent>
+      </Card>
 
       {services.length === 0 ? (
         <Card>
