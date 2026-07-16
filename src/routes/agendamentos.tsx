@@ -391,31 +391,26 @@ function AgendamentosPage() {
                   {filteredServices.map((svc) => (
                     <tr key={svc.id}>
                       <td className="py-2 px-3 border">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs font-semibold break-words">
-                            {getStatusDisplay(svc)}
-                          </span>
-                          <Select
-                            value={getEffectiveStatus(svc)}
-                            onValueChange={(v) => {
-                              setStatusOverrides((prev) => ({
-                                ...prev,
-                                [svc.id]: v as (typeof STATUS_OPTIONS)[number],
-                              }));
-                            }}
-                          >
-                            <SelectTrigger className="h-6 text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {STATUS_OPTIONS.map((opt) => (
-                                <SelectItem key={opt} value={opt}>
-                                  {opt}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <Select
+                          value={getEffectiveStatus(svc)}
+                          onValueChange={(v) => {
+                            setStatusOverrides((prev) => ({
+                              ...prev,
+                              [svc.id]: v as (typeof STATUS_OPTIONS)[number],
+                            }));
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs w-full min-w-0" title={getStatusDisplay(svc)}>
+                            <span className="truncate font-semibold">{getStatusDisplay(svc)}</span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {STATUS_OPTIONS.map((opt) => (
+                              <SelectItem key={opt} value={opt}>
+                                {opt}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td className="py-2 px-3 border whitespace-nowrap text-xs">
                         {getDataHora(svc) || "—"}
