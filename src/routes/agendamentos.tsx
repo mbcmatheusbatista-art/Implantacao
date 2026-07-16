@@ -35,14 +35,6 @@ function AgendamentosPage() {
   const [statusOverrides, setStatusOverrides] = useState<StatusOverrides>({});
   const [selectedTechFilter, setSelectedTechFilter] = useState<string>("all");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
-  const uniqueStatusOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const s of services) {
-      const display = getStatusDisplay(s);
-      if (display) set.add(display);
-    }
-    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [services]);
   const [hiddenTechs, setHiddenTechs] = useState<Set<string>>(new Set());
   const [includeAgendando, setIncludeAgendando] = useState(true);
   const [messageTech, setMessageTech] = useState<{
@@ -128,6 +120,15 @@ function AgendamentosPage() {
     const cleaned = cl(svc.serviceStatusOriginal);
     return cleaned || getEffectiveStatus(svc);
   }
+
+  const uniqueStatusOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of services) {
+      const display = getStatusDisplay(s);
+      if (display) set.add(display);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [services]);
 
   function namesMatch(a: string, b: string): boolean {
     const x = a.toLowerCase().trim();
