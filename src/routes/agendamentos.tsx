@@ -111,6 +111,12 @@ function AgendamentosPage() {
     return raw.replace(/\u200BFORMAT:(green|red|orange)\u200B/g, "").trim();
   }
 
+  function getStatusDisplay(svc: ConfirmedService): string {
+    const raw = svc.serviceStatusOriginal || "";
+    const cleaned = raw.replace(/\u200BFORMAT:(green|red|orange)\u200B/g, "").trim();
+    return cleaned || getEffectiveStatus(svc);
+  }
+
   function namesMatch(a: string, b: string): boolean {
     const x = a.toLowerCase().trim();
     const y = b.toLowerCase().trim();
@@ -366,9 +372,9 @@ function AgendamentosPage() {
                   {filteredServices.map((svc) => (
                     <tr key={svc.id}>
                       <td className="py-2 px-3 border">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs truncate max-w-[90px]" title={svc.serviceStatusOriginal || getEffectiveStatus(svc)}>
-                            {svc.serviceStatusOriginal || getEffectiveStatus(svc)}
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold break-words">
+                            {getStatusDisplay(svc)}
                           </span>
                           <Select
                             value={getEffectiveStatus(svc)}
@@ -379,7 +385,7 @@ function AgendamentosPage() {
                               }));
                             }}
                           >
-                            <SelectTrigger className="h-6 w-16 text-[10px]">
+                            <SelectTrigger className="h-6 text-[10px]">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
