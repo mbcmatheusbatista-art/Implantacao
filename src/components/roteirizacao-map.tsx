@@ -225,6 +225,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
         maxZoom: 18,
+        keepBuffer: 4,
+        updateWhenZooming: false,
+        updateWhenIdle: true,
       }).addTo(map);
 
       L.control.zoom({ position: "topright" }).addTo(map);
