@@ -236,6 +236,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       mapInstanceRef.current = map;
       setMapReady(true);
       map.invalidateSize();
+      const onResize = () => map.invalidateSize();
+      window.addEventListener("resize", onResize);
+      map.on("remove", () => window.removeEventListener("resize", onResize));
     }
 
     initMap();
