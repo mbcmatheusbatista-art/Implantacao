@@ -219,8 +219,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
         zoom: 4,
         zoomControl: false,
       });
-
-      map.invalidateSize();
+      map.whenReady(() => map.invalidateSize());
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
@@ -398,6 +397,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       clientes: points.filter((p) => p.type === "client").map((p) => p.label),
     });
 
+    map.invalidateSize();
+
     // Fit bounds to all points
     if (points.length > 0) {
       const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lng]));
@@ -441,7 +442,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
   // Layout: map on left, tech inventory on right
   return (
     <div className="flex gap-3">
-      <div className="flex-1 min-w-0 space-y-1">
+      <div className="flex-1 min-w-0 space-y-1 overflow-hidden">
         <div ref={mapRef} style={{ width: "100%", height: "calc(100vh - 160px)", minHeight: "400px", borderRadius: "8px" }} className="border" />
         <div className="flex gap-4 text-xs text-muted-foreground px-1 flex-wrap">
           <span className="flex items-center gap-1">
