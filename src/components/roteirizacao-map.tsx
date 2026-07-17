@@ -472,27 +472,31 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
         )}
       </div>
       {techInventory.items.length > 0 && (
-        <div className="w-56 shrink-0 border rounded-lg p-3 space-y-3 text-[11px] overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
+        <div className="w-auto min-w-48 max-w-72 shrink-0 border rounded-lg p-3 space-y-3 text-[11px] overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
           <div className="font-semibold text-muted-foreground">Equipamentos por técnico</div>
           {techInventory.items.map((item) => {
-            const maxH = 40;
-            const s8H = techInventory.maxS8 > 0 ? Math.max((item.s8 / techInventory.maxS8) * maxH, 4) : 0;
-            const g5H = techInventory.maxG5 > 0 ? Math.max((item.g5 / techInventory.maxG5) * maxH, 4) : 0;
+            const MAX_DOTS = 30;
+            const s8Dots = Math.min(item.s8, MAX_DOTS);
+            const g5Dots = Math.min(item.g5, MAX_DOTS);
+            const s8Extra = item.s8 > MAX_DOTS ? item.s8 - MAX_DOTS : 0;
+            const g5Extra = item.g5 > MAX_DOTS ? item.g5 - MAX_DOTS : 0;
+            const barSize = 8;
             return (
               <div key={item.name}>
                 <div className="text-muted-foreground truncate mb-1">{item.name}</div>
-                <div className="flex items-end gap-2">
-                  {item.s8 > 0 && (
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span className="tabular-nums text-[9px] text-muted-foreground">{item.s8}</span>
-                      <div style={{ width: 12, height: s8H, background: "#3b82f6", borderRadius: "2px 2px 0 0", minHeight: 4 }} title={`S8 Eco: ${item.s8}`} />
-                    </div>
+                <div className="flex flex-wrap items-center gap-0.5">
+                  {Array.from({ length: s8Dots }).map((_, i) => (
+                    <div key={`s8-${i}`} style={{ width: barSize, height: barSize, background: "#3b82f6", borderRadius: "1px" }} title={`S8 Eco: ${item.s8}`} />
+                  ))}
+                  {s8Extra > 0 && (
+                    <span className="text-[9px] text-muted-foreground ml-0.5">+{s8Extra}</span>
                   )}
-                  {item.g5 > 0 && (
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span className="tabular-nums text-[9px] text-muted-foreground">{item.g5}</span>
-                      <div style={{ width: 12, height: g5H, background: "#f59e0b", borderRadius: "2px 2px 0 0", minHeight: 4 }} title={`G5+: ${item.g5}`} />
-                    </div>
+                  {item.s8 > 0 && item.g5 > 0 && <span className="mx-0.5 text-muted-foreground/40" />}
+                  {Array.from({ length: g5Dots }).map((_, i) => (
+                    <div key={`g5-${i}`} style={{ width: barSize, height: barSize, background: "#f59e0b", borderRadius: "1px" }} title={`G5+: ${item.g5}`} />
+                  ))}
+                  {g5Extra > 0 && (
+                    <span className="text-[9px] text-muted-foreground ml-0.5">+{g5Extra}</span>
                   )}
                 </div>
               </div>
