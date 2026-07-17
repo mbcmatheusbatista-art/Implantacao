@@ -1,5 +1,4 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "next-themes";
 import type { ConfirmedService, Technician } from "@/types";
 import { brCityCoords } from "@/services/br-city-coords";
 import { normalize, extractCity, getServiceDestination, type RouteDistance } from "@/services/distance";
@@ -101,10 +100,8 @@ function resolveCoords(city: string, state: string, destQuery?: string): { lat: 
 }
 
 export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clients, balances, routesByTech }: Props) {
-  const { theme } = useTheme();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -225,17 +222,10 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
 
       map.invalidateSize();
 
-      const isDark = theme === "dark" || document.documentElement.classList.contains("dark");
-      const tileUrl = isDark
-        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-      const tileLayer = L.tileLayer(tileUrl, {
-        attribution: isDark
-          ? '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
-          : '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
         maxZoom: 18,
       }).addTo(map);
-      tileLayerRef.current = tileLayer;
 
       L.control.zoom({ position: "topright" }).addTo(map);
 
@@ -414,25 +404,6 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       map.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [points, mapReady, renderTick]);
-
-  // Swap tile layer when theme changes
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const L = leafletRef.current;
-    if (!map || !L || !tileLayerRef.current || !theme) return;
-    const isDark = theme === "dark";
-    const tileUrl = isDark
-      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-    map.removeLayer(tileLayerRef.current);
-    const newLayer = L.tileLayer(tileUrl, {
-      attribution: isDark
-        ? '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
-        : '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
-      maxZoom: 18,
-    }).addTo(map);
-    tileLayerRef.current = newLayer;
-  }, [theme]);
 
   // Summary inventory
   const inventorySummary = useMemo(() => {
