@@ -223,9 +223,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       map.invalidateSize();
       map.getContainer().style.background = "transparent";
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-        maxZoom: 20,
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
+        maxZoom: 19,
         keepBuffer: 4,
         updateWhenZooming: false,
         updateWhenIdle: true,
