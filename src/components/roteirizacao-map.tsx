@@ -409,6 +409,23 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     }
   }, [points, mapReady, renderTick]);
 
+  // Tech inventory list with bars
+  const techInventory = useMemo(() => {
+    const items: { name: string; s8: number; g5: number }[] = [];
+    let maxS8 = 0, maxG5 = 0;
+    for (const t of technicians) {
+      const b = balances?.get(t.id);
+      const s8 = b?.inventory.s8Eco ?? 0;
+      const g5 = b?.inventory.g5Plus ?? 0;
+      if (s8 || g5) {
+        items.push({ name: t.firstName || t.nameOriginal, s8, g5 });
+        if (s8 > maxS8) maxS8 = s8;
+        if (g5 > maxG5) maxG5 = g5;
+      }
+    }
+    return { items, maxS8, maxG5 };
+  }, [technicians, balances]);
+
   // Summary inventory
   const inventorySummary = useMemo(() => {
     if (!balances || balances.size === 0) return null;
@@ -453,6 +470,34 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           <span className="text-green-600">Disponível: {inventorySummary.totalS8 - inventorySummary.usedS8 - inventorySummary.pendS8} S8 ECO / {inventorySummary.totalG5 - inventorySummary.usedG5 - inventorySummary.pendG5} G5+</span>
           {inventorySummary.usedS8 > 0 && <span>Usados: {inventorySummary.usedS8} S8 ECO / {inventorySummary.usedG5} G5+</span>}
           {inventorySummary.pendS8 > 0 && <span className="text-amber-500">Pendentes: {inventorySummary.pendS8} S8 ECO / {inventorySummary.pendG5} G5+</span>}
+        </div>
+      )}
+      {techInventory.items.length > 0 && (
+        <div className="border-t pt-2 px-1">
+          <div className="text-[10px] font-semibold text-muted-foreground mb-1.5">Equipamentos por técnico</div>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+            {techInventory.items.map((item) => {
+              const barW = 160;
+              const s8W = techInventory.maxS8 > 0 ? (item.s8 / techInventory.maxS8) * barW : 0;
+              const g5W = techInventory.maxG5 > 0 ? (item.g5 / techInventory.maxG5) * barW : 0;
+              return (
+                <div key={item.name} className="flex items-center gap-2 text-[11px]">
+                  <span className="w-24 truncate shrink-0 text-muted-foreground">{item.name}</span>
+                  <div className="flex items-center gap-0.5 flex-1">
+                    {item.s8 > 0 && (
+                      <div style={{ width: Math.max(s8W, 4), height: 10, background: "#3b82f6", borderRadius: 2, minWidth: 4 }} title={`S8 Eco: ${item.s8}`} />
+                    )}
+                    {item.g5 > 0 && (
+                      <div style={{ width: Math.max(g5W, 4), height: 10, background: "#f59e0b", borderRadius: 2, minWidth: 4 }} title={`G5+: ${item.g5}`} />
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground tabular-nums w-14 text-right shrink-0">
+                    {item.s8}/{item.g5}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
