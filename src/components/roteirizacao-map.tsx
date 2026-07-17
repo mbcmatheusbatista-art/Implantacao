@@ -415,7 +415,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       const s8 = b?.inventory.s8Eco ?? 0;
       const g5 = b?.inventory.g5Plus ?? 0;
       if (s8 || g5) {
-        items.push({ name: t.firstName || t.nameOriginal, s8, g5 });
+        items.push({ name: t.nameOriginal, s8, g5 });
         if (s8 > maxS8) maxS8 = s8;
         if (g5 > maxG5) maxG5 = g5;
       }
