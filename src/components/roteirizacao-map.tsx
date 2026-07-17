@@ -330,7 +330,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       if (isTech && (p.s8Eco || p.g5Plus)) {
         const parts: string[] = [];
         if (p.s8Eco) parts.push(`📷${p.s8Eco}`);
-        if (p.g5Plus) parts.push(`🎮${p.g5Plus}`);
+        if (p.g5Plus) parts.push(`🛰️${p.g5Plus}`);
         const warn = (p.s8Eco !== undefined && p.s8Eco === 1) || (p.g5Plus !== undefined && p.g5Plus === 1) ? " ⚠️" : "";
         if (parts.length || warn) {
           badgeHtml = `<div style="
