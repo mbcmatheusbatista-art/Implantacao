@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { ThemeProvider } from "next-themes";
 import { hydrateFromDb } from "@/stores/app-store";
 
 import appCss from "../styles.css?url";
@@ -114,7 +115,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
@@ -132,6 +133,7 @@ function RootComponent() {
   useEffect(() => { hydrateFromDb(); }, []);
 
   return (
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <div className="min-h-screen flex w-full bg-background">
@@ -146,5 +148,6 @@ function RootComponent() {
         <Toaster />
       </SidebarProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   );
 }
