@@ -36,6 +36,8 @@ interface Point {
   city: string;
   state: string;
   extra?: string;
+  s8Eco?: number;
+  g5Plus?: number;
 }
 
 const STATE_CAPITAL: Record<string, string> = {
@@ -136,6 +138,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
             extraLines.push("Sem saldo disponível");
           }
         }
+        const s8 = bal?.inventory.s8Eco ?? 0;
+        const g5 = bal?.inventory.g5Plus ?? 0;
         pts.push({
           ...coords,
           label: t.firstName || t.nameOriginal,
@@ -144,6 +148,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           city: t.cityOriginal || "",
           state: t.state || "",
           extra: extraLines.join("<br/>"),
+          s8Eco: s8,
+          g5Plus: g5,
         });
         techCount.resolved++;
       } else {
@@ -319,21 +325,44 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       const shape = isTech ? "circle" : "square";
       const letter = isTech ? "T" : "C";
 
+      let badgeHtml = "";
+      let iconW = 22, iconH = 22, ancX = 11, ancY = 11;
+      if (isTech && (p.s8Eco || p.g5Plus)) {
+        const parts: string[] = [];
+        if (p.s8Eco) parts.push(`📷${p.s8Eco}`);
+        if (p.g5Plus) parts.push(`🎮${p.g5Plus}`);
+        const warn = (p.s8Eco !== undefined && p.s8Eco <= 1) || (p.g5Plus !== undefined && p.g5Plus <= 1) ? " ⚠️" : "";
+        if (parts.length || warn) {
+          badgeHtml = `<div style="
+            font-size: 10px; white-space: nowrap;
+            background: rgba(255,255,255,0.95);
+            padding: 1px 5px; border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+            margin-top: 2px; line-height: 1.4;
+            text-align: center;
+          ">${parts.join(" ")}${warn}</div>`;
+          iconW = 90; iconH = 42; ancX = 45; ancY = 11;
+        }
+      }
+
       const icon = L.divIcon({
         className: "",
-        html: `<div style="
-          width: 22px; height: 22px;
-          background: ${color};
-          border: 2px solid white;
-          border-radius: ${shape === "circle" ? "50%" : "3px"};
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          display: flex; align-items: center; justify-content: center;
-          color: white; font-size: 11px; font-weight: 700;
-          font-family: Arial, sans-serif;
-          cursor: pointer;
-        ">${letter}</div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
+        html: `<div style="display:flex;flex-direction:column;align-items:center;width:${iconW}px">
+          <div style="
+            width: 22px; height: 22px;
+            background: ${color};
+            border: 2px solid white;
+            border-radius: ${shape === "circle" ? "50%" : "3px"};
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 11px; font-weight: 700;
+            font-family: Arial, sans-serif;
+            cursor: pointer;
+          ">${letter}</div>
+          ${badgeHtml}
+        </div>`,
+        iconSize: [iconW, iconH],
+        iconAnchor: [ancX, ancY],
       });
 
       const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
