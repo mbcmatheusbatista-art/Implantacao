@@ -325,8 +325,21 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       const shape = isTech ? "circle" : "square";
       const letter = isTech ? "T" : "C";
 
+      let nameHtml = "";
       let badgeHtml = "";
       let iconW = 22, iconH = 22, ancX = 11, ancY = 11;
+      if (isTech) {
+        nameHtml = `<div style="
+          font-size: 12px; font-weight: 600; white-space: nowrap;
+          background: rgba(255,255,255,0.92);
+          padding: 1px 5px; border-radius: 4px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+          margin-bottom: 2px; line-height: 1.4;
+          text-align: center;
+          color: #2563eb;
+        ">${p.label}</div>`;
+        iconW = 140; iconH = 22; ancX = 70; ancY = 22;
+      }
       if (isTech && (p.s8Eco || p.g5Plus)) {
         const parts: string[] = [];
         if (p.s8Eco) parts.push(`📷${p.s8Eco}`);
@@ -341,13 +354,14 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
             margin-top: 2px; line-height: 1.4;
             text-align: center;
           ">${parts.join(" ")}${warn}</div>`;
-          iconW = 100; iconH = 48; ancX = 50; ancY = 11;
+          iconW = 140; iconH = 56; ancX = 70; ancY = 22;
         }
       }
 
       const icon = L.divIcon({
         className: "",
         html: `<div style="display:flex;flex-direction:column;align-items:center;width:${iconW}px">
+          ${nameHtml}
           <div style="
             width: 22px; height: 22px;
             background: ${color};
