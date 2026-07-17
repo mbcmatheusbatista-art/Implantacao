@@ -37,8 +37,7 @@ function SolicitacoesPage() {
   }, [confirmedServices, selected]);
 
   function buildTableMessage(services: typeof filtered): string {
-    const pad = (s: string, n: number) => s.padEnd(n);
-    const header = `*${pad("Placa", 12)}*     *${pad("Nome do Responsável", 30)}*     *${pad("Telefone", 18)}*     *Observações / Particularidades*`;
+    const header = `*Placa*    *Nome do Responsável*    *Telefone*    *Observações / Particularidades*`;
     const lines = services.map((svc) => {
       const placa = svc.plateOriginal || "-";
       const nome = svc.responsibleOriginal || "-";
