@@ -334,14 +334,14 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
         const warn = (p.s8Eco !== undefined && p.s8Eco === 1) || (p.g5Plus !== undefined && p.g5Plus === 1) ? " ⚠️" : "";
         if (parts.length || warn) {
           badgeHtml = `<div style="
-            font-size: 10px; white-space: nowrap;
+            font-size: 13px; white-space: nowrap;
             background: rgba(255,255,255,0.95);
             padding: 1px 5px; border-radius: 4px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.25);
             margin-top: 2px; line-height: 1.4;
             text-align: center;
           ">${parts.join(" ")}${warn}</div>`;
-          iconW = 90; iconH = 42; ancX = 45; ancY = 11;
+          iconW = 100; iconH = 48; ancX = 50; ancY = 11;
         }
       }
 
