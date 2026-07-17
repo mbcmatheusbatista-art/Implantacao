@@ -278,7 +278,7 @@ function RoteirizacaoPage() {
 
       <Suspense
         fallback={
-          <div className="flex items-center justify-center min-h-[calc(100vh-260px)] border rounded-lg bg-muted/10">
+          <div className="flex items-center justify-center min-h-[calc(100vh-160px)] border rounded-lg bg-muted/10">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         }
