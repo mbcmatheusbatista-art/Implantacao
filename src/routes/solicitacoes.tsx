@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ClipboardList, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
@@ -27,6 +28,9 @@ function containsAdminName(text: string, name: AdminName): boolean {
 function SolicitacoesPage() {
   const confirmedServices = useAppStore((s) => s.confirmedServices);
   const [selected, setSelected] = useState<AdminName | "">("");
+  const [adminPhones, setAdminPhones] = useState<Partial<Record<AdminName, string>>>({});
+  const [contactAdmin, setContactAdmin] = useState<AdminName>("Rogério");
+  const [contactPhone, setContactPhone] = useState("");
 
   const filtered = useMemo(() => {
     if (!selected) return [];
@@ -62,6 +66,54 @@ function SolicitacoesPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Contato do administrador</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <div className="max-w-[180px]">
+              <Select value={contactAdmin} onValueChange={(v) => setContactAdmin(v as AdminName)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADMIN_NAMES.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input
+              placeholder="Número de contato"
+              className="max-w-xs"
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+            />
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!contactPhone.trim()) return;
+                setAdminPhones((prev) => ({ ...prev, [contactAdmin]: contactPhone.trim() }));
+                setContactPhone("");
+                toast.success(`Número salvo para ${contactAdmin}`);
+              }}
+            >
+              Salvar
+            </Button>
+          </div>
+          {Object.entries(adminPhones).length > 0 && (
+            <div className="mt-3 text-sm text-muted-foreground space-y-1">
+              {Object.entries(adminPhones).map(([name, phone]) => (
+                <div key={name}>
+                  <span className="font-medium">{name}:</span> {phone}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Selecionar administrador</CardTitle>
         </CardHeader>
         <CardContent>
@@ -85,8 +137,9 @@ function SolicitacoesPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  const phone = selected === "Rogério" ? "11 9 4175-4926" : "";
-                  if (!phone) return;
+                  const defaults: Partial<Record<AdminName, string>> = { Rogério: "11 9 4175-4926" };
+                  const phone = adminPhones[selected] || defaults[selected] || "";
+                  if (!phone) { toast.error("Nenhum número cadastrado para este administrador."); return; }
                   const url = buildWhatsAppUrl(phone, buildTableMessage(filtered));
                   if (!url) {
                     toast.error("Telefone inválido — não é possível abrir o WhatsApp.");
