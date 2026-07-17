@@ -221,14 +221,10 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       });
 
       map.invalidateSize();
-      map.getContainer().style.background = "transparent";
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
-        maxZoom: 19,
-        keepBuffer: 4,
-        updateWhenZooming: false,
-        updateWhenIdle: true,
+        maxZoom: 18,
       }).addTo(map);
 
       L.control.zoom({ position: "topright" }).addTo(map);
@@ -445,7 +441,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
   // Legend
   return (
     <div className="space-y-1">
-      <div ref={mapRef} style={{ width: "100%", height: "calc(100vh - 160px)", minHeight: "400px", borderRadius: "8px", background: "hsl(var(--background))" }} className="border" />
+      <div ref={mapRef} style={{ width: "100%", height: "calc(100vh - 160px)", minHeight: "400px", borderRadius: "8px" }} className="border" />
       <div className="flex gap-4 text-xs text-muted-foreground px-1 flex-wrap">
         <span className="flex items-center gap-1">
           <span style={{ display: "inline-block", width: 12, height: 12, background: "#2563eb", borderRadius: "50%", border: "1px solid white" }} />
