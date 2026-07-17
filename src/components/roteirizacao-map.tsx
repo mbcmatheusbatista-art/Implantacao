@@ -472,26 +472,26 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
         )}
       </div>
       {techInventory.items.length > 0 && (
-        <div className="w-64 shrink-0 border rounded-lg p-3 space-y-2 text-[11px] overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
+        <div className="w-56 shrink-0 border rounded-lg p-3 space-y-3 text-[11px] overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
           <div className="font-semibold text-muted-foreground">Equipamentos por técnico</div>
           {techInventory.items.map((item) => {
-            const barW = 160;
-            const s8W = techInventory.maxS8 > 0 ? (item.s8 / techInventory.maxS8) * barW : 0;
-            const g5W = techInventory.maxG5 > 0 ? (item.g5 / techInventory.maxG5) * barW : 0;
+            const maxH = 40;
+            const s8H = techInventory.maxS8 > 0 ? Math.max((item.s8 / techInventory.maxS8) * maxH, 4) : 0;
+            const g5H = techInventory.maxG5 > 0 ? Math.max((item.g5 / techInventory.maxG5) * maxH, 4) : 0;
             return (
-              <div key={item.name} className="space-y-0.5">
-                <div className="text-muted-foreground truncate">{item.name}</div>
-                <div className="flex items-center gap-2">
+              <div key={item.name}>
+                <div className="text-muted-foreground truncate mb-1">{item.name}</div>
+                <div className="flex items-end gap-2">
                   {item.s8 > 0 && (
-                    <div className="flex items-center gap-1 text-[10px]">
-                      <div style={{ width: Math.max(s8W, 4), height: 8, background: "#3b82f6", borderRadius: 2, minWidth: 4 }} title={`S8 Eco: ${item.s8}`} />
-                      <span className="tabular-nums text-muted-foreground">{item.s8}</span>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="tabular-nums text-[9px] text-muted-foreground">{item.s8}</span>
+                      <div style={{ width: 12, height: s8H, background: "#3b82f6", borderRadius: "2px 2px 0 0", minHeight: 4 }} title={`S8 Eco: ${item.s8}`} />
                     </div>
                   )}
                   {item.g5 > 0 && (
-                    <div className="flex items-center gap-1 text-[10px]">
-                      <div style={{ width: Math.max(g5W, 4), height: 8, background: "#f59e0b", borderRadius: 2, minWidth: 4 }} title={`G5+: ${item.g5}`} />
-                      <span className="tabular-nums text-muted-foreground">{item.g5}</span>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="tabular-nums text-[9px] text-muted-foreground">{item.g5}</span>
+                      <div style={{ width: 12, height: g5H, background: "#f59e0b", borderRadius: "2px 2px 0 0", minHeight: 4 }} title={`G5+: ${item.g5}`} />
                     </div>
                   )}
                 </div>
