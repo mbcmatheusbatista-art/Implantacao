@@ -220,6 +220,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
         zoomControl: false,
       });
 
+      map.invalidateSize();
+
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
         maxZoom: 18,
@@ -235,7 +237,6 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       markerLayerRef.current = layerGroup;
       mapInstanceRef.current = map;
       setMapReady(true);
-      map.invalidateSize();
       const onResize = () => map.invalidateSize();
       window.addEventListener("resize", onResize);
       map.on("remove", () => window.removeEventListener("resize", onResize));
