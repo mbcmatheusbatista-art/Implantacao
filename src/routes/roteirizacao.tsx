@@ -190,95 +190,49 @@ function RoteirizacaoPage() {
   );
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Roteirização por Técnico</h1>
-      <p className="text-sm text-muted-foreground">
-        Clientes recomendados para cada técnico, ordenados por distância.
-      </p>
-
-      {/* Matriz filter */}
-      <Card>
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm">Filtrar por matriz</CardTitle>
-        </CardHeader>
-        <CardContent className="pb-3">
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={matrizFilter === "all"}
-                onChange={() => setMatrizFilter("all")}
-                className="accent-primary"
-              />
-              Todas as matrizes
-            </label>
-            {matrizes.map((m) => {
-              const checked =
-                matrizFilter !== "all" &&
-                matrizFilter !== "none" &&
-                matrizFilter.has(m);
-              return (
-                <label
-                  key={m}
-                  className="flex items-center gap-2 text-xs cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => {
-                      if (matrizFilter === "all" || matrizFilter === "none") {
-                        setMatrizFilter(new Set([m]));
-                      } else {
-                        const next = new Set(matrizFilter);
-                        if (next.has(m)) next.delete(m);
-                        else next.add(m);
-                        setMatrizFilter(next.size === 0 ? "none" : next);
-                      }
-                    }}
-                    className="accent-primary"
-                  />
-                  {m}
-                </label>
-              );
-            })}
-            {hasEmptyMatriz && (
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={
-                    matrizFilter !== "all" &&
-                    matrizFilter !== "none" &&
-                    matrizFilter.has("__sem_matriz__")
-                  }
-                  onChange={() => {
-                    const m = "__sem_matriz__";
-                    if (matrizFilter === "all" || matrizFilter === "none") {
-                      setMatrizFilter(new Set([m]));
-                    } else {
-                      const next = new Set(matrizFilter);
-                      if (next.has(m)) next.delete(m);
-                      else next.add(m);
-                      setMatrizFilter(next.size === 0 ? "none" : next);
-                    }
-                  }}
-                  className="accent-primary"
-                />
-                Sem matriz
+    <div className="flex flex-col h-[calc(100vh-56px)]">
+      {/* Matriz filter bar */}
+      <Card className="shrink-0 mx-0 rounded-none border-x-0 border-t-0">
+        <CardHeader className="py-2 px-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <CardTitle className="text-xs font-semibold shrink-0">Filtrar por matriz</CardTitle>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+              <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                <input type="checkbox" checked={matrizFilter === "all"} onChange={() => setMatrizFilter("all")} className="accent-primary" />
+                Todas
               </label>
-            )}
+              {matrizes.map((m) => {
+                const checked = matrizFilter !== "all" && matrizFilter !== "none" && matrizFilter.has(m);
+                return (
+                  <label key={m} className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                    <input type="checkbox" checked={checked} onChange={() => {
+                      if (matrizFilter === "all" || matrizFilter === "none") { setMatrizFilter(new Set([m])); }
+                      else { const n = new Set(matrizFilter); if (n.has(m)) n.delete(m); else n.add(m); setMatrizFilter(n.size === 0 ? "none" : n); }
+                    }} className="accent-primary" />
+                    {m}
+                  </label>
+                );
+              })}
+              {hasEmptyMatriz && (
+                <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                  <input type="checkbox" checked={matrizFilter !== "all" && matrizFilter !== "none" && matrizFilter.has("__sem_matriz__")}
+                    onChange={() => {
+                      const m = "__sem_matriz__";
+                      if (matrizFilter === "all" || matrizFilter === "none") { setMatrizFilter(new Set([m])); }
+                      else { const n = new Set(matrizFilter); if (n.has(m)) n.delete(m); else n.add(m); setMatrizFilter(n.size === 0 ? "none" : n); }
+                    }} className="accent-primary" />
+                  Sem matriz
+                </label>
+              )}
+            </div>
+            {loading && <span className="text-[11px] text-muted-foreground ml-auto">Calculando...</span>}
           </div>
-        </CardContent>
+        </CardHeader>
       </Card>
-
-      {loading && (
-        <p className="text-sm text-muted-foreground">
-          Calculando rotas...
-        </p>
-      )}
 
       <Suspense
         fallback={
-          <div className="flex items-center justify-center min-h-[calc(100vh-160px)] border rounded-lg bg-muted/10">
+          <div className="flex items-center justify-center flex-1 border rounded-lg bg-muted/10">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         }
