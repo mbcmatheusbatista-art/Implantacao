@@ -37,6 +37,8 @@ function SolicitacoesPage() {
   }, [confirmedServices, selected]);
 
   function buildTableMessage(services: typeof filtered): string {
+    const pad = (s: string, n: number) => s.padEnd(n);
+    const header = `*${pad("Placa", 12)}*     *${pad("Nome do Responsável", 30)}*     *${pad("Telefone", 18)}*     *Observações / Particularidades*`;
     const lines = services.map((svc) => {
       const placa = svc.plateOriginal || "-";
       const nome = svc.responsibleOriginal || "-";
@@ -44,7 +46,7 @@ function SolicitacoesPage() {
       const obs = svc.observationsOriginal || "-";
       return `${placa.padEnd(12)}     ${nome.padEnd(30)}     ${fone.padEnd(18)}     ${obs}`;
     });
-    return lines.join("\n");
+    return `${header}\n${lines.join("\n")}`;
   }
 
   return (
