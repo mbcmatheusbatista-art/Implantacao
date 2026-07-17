@@ -235,6 +235,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       markerLayerRef.current = layerGroup;
       mapInstanceRef.current = map;
       setMapReady(true);
+      map.invalidateSize();
     }
 
     initMap();
