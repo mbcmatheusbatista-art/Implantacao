@@ -42,7 +42,7 @@ function SolicitacoesPage() {
       const nome = svc.responsibleOriginal || "-";
       const fone = svc.phoneOriginal || "-";
       const obs = svc.observationsOriginal || "-";
-      return `${placa} | ${nome} | ${fone} | ${obs}`;
+      return `${placa.padEnd(12)}     ${nome.padEnd(30)}     ${fone.padEnd(18)}     ${obs}`;
     });
     return lines.join("\n");
   }
