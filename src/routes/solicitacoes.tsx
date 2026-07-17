@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { toast } from "sonner";
 import { useAppStore } from "@/stores/app-store";
+import { buildWhatsAppUrl, openWhatsAppInReusableTab } from "@/utils/whatsapp-url";
 
 export const Route = createFileRoute("/solicitacoes")({
   component: SolicitacoesPage,
@@ -50,19 +53,43 @@ function SolicitacoesPage() {
           <CardTitle className="text-base">Selecionar administrador</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="max-w-xs">
-            <Select value={selected} onValueChange={(v) => setSelected(v as AdminName | "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione..." />
-              </SelectTrigger>
-              <SelectContent>
-                {ADMIN_NAMES.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-3">
+            <div className="max-w-xs">
+              <Select value={selected} onValueChange={(v) => setSelected(v as AdminName | "")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADMIN_NAMES.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selected && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const phone = selected === "Rogério" ? "11 9 4175-4926" : "";
+                  if (!phone) return;
+                  const url = buildWhatsAppUrl(phone, "Olá!");
+                  if (!url) {
+                    toast.error("Telefone inválido — não é possível abrir o WhatsApp.");
+                    return;
+                  }
+                  const win = openWhatsAppInReusableTab(url);
+                  if (!win) {
+                    toast.error("Não foi possível acionar o app do WhatsApp. Verifique se ele está instalado.");
+                  }
+                }}
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                WhatsApp
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
