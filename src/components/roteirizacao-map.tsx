@@ -4,8 +4,6 @@ import { brCityCoords } from "@/services/br-city-coords";
 import { normalize, extractCity, getServiceDestination, type RouteDistance } from "@/services/distance";
 import type { EquipmentBalance } from "@/services/equipment-balance";
 
-const SUGGEST_MAX_METERS = 150_000;
-
 const STATE_REGION: Record<string, string> = {
   AC: "Norte", AP: "Norte", AM: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
   AL: "Nordeste", BA: "Nordeste", CE: "Nordeste", MA: "Nordeste", PB: "Nordeste", PE: "Nordeste", PI: "Nordeste", RN: "Nordeste", SE: "Nordeste",
@@ -294,13 +292,6 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     return () => { cancelled = true; };
   }, [mapReady]);
 
-  const routeLinesLayerRef = useRef<L.LayerGroup | null>(null);
-  const routeAnimRef = useRef<number | null>(null);
-  const fadeAnimRef = useRef<number | null>(null);
-  const routePolylinesRef = useRef<{ polyline: L.Polyline; fadeStep: number }[]>([]);
-  const routeArrowRefs = useRef<L.Marker[]>([]);
-  const [routeTick, setRouteTick] = useState(0);
-
   // Update markers when points or mapReady or renderTick change (without destroying the map)
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -365,176 +356,6 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       map.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [points, mapReady, renderTick]);
-
-  // Animated suggestion lines for nearby routes (<=200km) — restarts on tick or route change
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const L = leafletRef.current;
-    if (!map || !L || !routesByTech) return;
-    if (Object.keys(routesByTech).length === 0) return;
-
-    // Cleanup previous animation
-    if (routeAnimRef.current !== null) { cancelAnimationFrame(routeAnimRef.current); routeAnimRef.current = null; }
-    if (fadeAnimRef.current !== null) { cancelAnimationFrame(fadeAnimRef.current); fadeAnimRef.current = null; }
-
-    // Remove old arrows
-    for (const a of routeArrowRefs.current) { map.removeLayer(a); }
-    routeArrowRefs.current = [];
-
-    // Remove old route line layer
-    if (routeLinesLayerRef.current) {
-      map.removeLayer(routeLinesLayerRef.current);
-      routeLinesLayerRef.current = null;
-    }
-    routePolylinesRef.current = [];
-
-    // Only show routes for clients with AGENDANDO or AGENDAR status
-    const eligibleClientIds = new Set(
-      clients
-        .filter((c) => c.serviceStatus === "AGENDAR" || c.serviceStatus === "AGENDANDO")
-        .map((c) => c.id),
-    );
-
-    // Only consider techs with available balance
-    const eligibleTechIds = new Set<string>();
-    for (const t of technicians) {
-      const b = balances?.get(t.id);
-      if (b && (b.available.s8Eco > 0 || b.available.g5Plus > 0)) {
-        eligibleTechIds.add(t.id);
-      }
-    }
-
-    const techCoordsMap = new Map<string, { lat: number; lng: number }>();
-    for (const t of technicians) {
-      const coords = resolveCoords(t.cityOriginal || "", t.state || "");
-      if (coords) techCoordsMap.set(t.id, coords);
-    }
-
-    const clientCoordsMap = new Map<string, { lat: number; lng: number }>();
-    for (const c of clients) {
-      const destQuery = getServiceDestination(c);
-      const coords = resolveCoords(c.cityDetected || "", c.stateDetected || "", destQuery);
-      if (coords) clientCoordsMap.set(c.id, coords);
-    }
-
-    const routeLayer = L.layerGroup().addTo(map);
-    routeLinesLayerRef.current = routeLayer;
-
-    // Pick the nearest eligible tech per client (≤150km, AGENDANDO/AGENDAR)
-    type BestRoute = { clientId: string; dist: RouteDistance; clientCoord: { lat: number; lng: number }; techCoord: { lat: number; lng: number } };
-    const bestPerClient = new Map<string, BestRoute>();
-
-    for (const [techId, techRoutes] of Object.entries(routesByTech)) {
-      if (!eligibleTechIds.has(techId)) continue;
-      const techCoord = techCoordsMap.get(techId);
-      if (!techCoord) continue;
-
-      for (const [clientId, dist] of Object.entries(techRoutes)) {
-        if (!eligibleClientIds.has(clientId)) continue;
-        if (!dist || dist.distanceMeters > SUGGEST_MAX_METERS) continue;
-        const clientCoord = clientCoordsMap.get(clientId);
-        if (!clientCoord) continue;
-
-        const existing = bestPerClient.get(clientId);
-        if (!existing || dist.distanceMeters < existing.dist.distanceMeters) {
-          bestPerClient.set(clientId, { clientId, dist, clientCoord, techCoord });
-        }
-      }
-    }
-
-    if (bestPerClient.size === 0) return;
-
-    // For each route: create 4 arrows evenly spaced, no dashed line
-    const ARROWS_PER_ROUTE = 4;
-    const arrowPhase: number[] = [0, 0.25, 0.5, 0.75]; // phase offset so they spread
-    const arrows: L.Marker[] = [];
-
-    for (const [, { techCoord, clientCoord }] of bestPerClient) {
-      const dLat = clientCoord.lat - techCoord.lat;
-      const dLng = clientCoord.lng - techCoord.lng;
-      const angle = Math.atan2(clientCoord.lng - techCoord.lng, clientCoord.lat - techCoord.lat) * (180 / Math.PI);
-
-      const arrowIcon = L.divIcon({
-        className: "",
-        html: `<div style="
-          width: 0; height: 0;
-          border-left: 8px solid transparent;
-          border-right: 8px solid transparent;
-          border-bottom: 14px solid #2563eb;
-          transform: rotate(${angle}deg);
-          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
-        "></div>`,
-        iconSize: [16, 14],
-        iconAnchor: [8, 14],
-      });
-
-      for (let a = 0; a < ARROWS_PER_ROUTE; a++) {
-        const t = 0.1 + a * 0.25; // positions: 10%, 35%, 60%, 85%
-        const lat = techCoord.lat + dLat * t;
-        const lng = techCoord.lng + dLng * t;
-        const m = L.marker([lat, lng], { icon: arrowIcon, interactive: false }).addTo(routeLayer);
-        arrows.push(m);
-      }
-    }
-
-    routeArrowRefs.current = arrows;
-
-    // Animation: all arrows march forward together for 10s, then fade and restart
-    const ANIM_DURATION = 10000;
-    const startTime = performance.now();
-    // Snapshot start/end coords per route for animation
-    const routeCoords: { sLat: number; sLng: number; dLat: number; dLng: number }[] = [];
-    for (const [, { techCoord, clientCoord }] of bestPerClient) {
-      routeCoords.push({
-        sLat: techCoord.lat,
-        sLng: techCoord.lng,
-        dLat: clientCoord.lat - techCoord.lat,
-        dLng: clientCoord.lng - techCoord.lng,
-      });
-    }
-
-    function animateArrows(now: number) {
-      const elapsed = now - startTime;
-      if (elapsed < ANIM_DURATION) {
-        const progress = elapsed / ANIM_DURATION;
-        let arrowIdx = 0;
-        for (let r = 0; r < routeCoords.length; r++) {
-          const { sLat, sLng, dLat, dLng } = routeCoords[r];
-          for (let a = 0; a < ARROWS_PER_ROUTE; a++) {
-            // Each arrow has a phase offset; position wraps around
-            let t = (progress + arrowPhase[a]) % 1;
-            const arrow = arrows[arrowIdx];
-            if (arrow) {
-              arrow.setLatLng([sLat + dLat * t, sLng + dLng * t]);
-            }
-            arrowIdx++;
-          }
-        }
-        routeAnimRef.current = requestAnimationFrame(animateArrows);
-      } else {
-        // Remove all arrows, then tick restart
-        for (const a of arrows) { map.removeLayer(a); }
-        arrows.length = 0;
-        routeArrowRefs.current = [];
-
-        if (routeLinesLayerRef.current) {
-          map.removeLayer(routeLinesLayerRef.current);
-          routeLinesLayerRef.current = null;
-        }
-        setRouteTick((t) => t + 1);
-      }
-    }
-
-    routeAnimRef.current = requestAnimationFrame(animateArrows);
-  }, [routesByTech, mapReady, routeTick, technicians, clients, balances]);
-
-  // Cleanup animation on unmount
-  useEffect(() => {
-    return () => {
-      if (routeAnimRef.current !== null) cancelAnimationFrame(routeAnimRef.current);
-      if (fadeAnimRef.current !== null) cancelAnimationFrame(fadeAnimRef.current);
-    };
-  }, []);
 
   // Summary inventory
   const inventorySummary = useMemo(() => {
