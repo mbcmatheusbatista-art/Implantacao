@@ -438,62 +438,65 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     return { totalS8, totalG5, usedS8, usedG5, pendS8, pendG5 };
   }, [balances]);
 
-  // Legend
+  // Layout: map on left, tech inventory on right
   return (
-    <div className="space-y-1">
-      <div ref={mapRef} style={{ width: "100%", height: "calc(100vh - 160px)", minHeight: "400px", borderRadius: "8px" }} className="border" />
-      <div className="flex gap-4 text-xs text-muted-foreground px-1 flex-wrap">
-        <span className="flex items-center gap-1">
-          <span style={{ display: "inline-block", width: 12, height: 12, background: "#2563eb", borderRadius: "50%", border: "1px solid white" }} />
-          Técnico
-        </span>
-        <span className="flex items-center gap-1">
-          <span style={{ display: "inline-block", width: 12, height: 12, background: "#dc2626", borderRadius: 3 }} />
-          Cliente
-        </span>
-        {Object.entries(REGION_COLORS).map(([region, color]) => (
-          <span key={region} className="flex items-center gap-1">
-            <span style={{ display: "inline-block", width: 16, height: 3, background: color, borderRadius: 1 }} />
-            {region}
+    <div className="flex gap-3">
+      <div className="flex-1 min-w-0 space-y-1">
+        <div ref={mapRef} style={{ width: "100%", height: "calc(100vh - 160px)", minHeight: "400px", borderRadius: "8px" }} className="border" />
+        <div className="flex gap-4 text-xs text-muted-foreground px-1 flex-wrap">
+          <span className="flex items-center gap-1">
+            <span style={{ display: "inline-block", width: 12, height: 12, background: "#2563eb", borderRadius: "50%", border: "1px solid white" }} />
+            Técnico
           </span>
-        ))}
-        <span>{points.length} ponto(s) no mapa</span>
-        <span>{technicians.length} técnico(s) · {clients.length} cliente(s) na lista</span>
-      </div>
-      {inventorySummary && (
-        <div className="flex gap-3 text-[10px] text-muted-foreground px-1 flex-wrap border-t pt-1">
-          <span className="font-semibold">Inventário total:</span>
-          <span className="text-green-600">Disponível: {inventorySummary.totalS8 - inventorySummary.usedS8 - inventorySummary.pendS8} S8 ECO / {inventorySummary.totalG5 - inventorySummary.usedG5 - inventorySummary.pendG5} G5+</span>
-          {inventorySummary.usedS8 > 0 && <span>Usados: {inventorySummary.usedS8} S8 ECO / {inventorySummary.usedG5} G5+</span>}
-          {inventorySummary.pendS8 > 0 && <span className="text-amber-500">Pendentes: {inventorySummary.pendS8} S8 ECO / {inventorySummary.pendG5} G5+</span>}
+          <span className="flex items-center gap-1">
+            <span style={{ display: "inline-block", width: 12, height: 12, background: "#dc2626", borderRadius: 3 }} />
+            Cliente
+          </span>
+          {Object.entries(REGION_COLORS).map(([region, color]) => (
+            <span key={region} className="flex items-center gap-1">
+              <span style={{ display: "inline-block", width: 16, height: 3, background: color, borderRadius: 1 }} />
+              {region}
+            </span>
+          ))}
+          <span>{points.length} ponto(s) no mapa</span>
+          <span>{technicians.length} técnico(s) · {clients.length} cliente(s) na lista</span>
         </div>
-      )}
-      {techInventory.items.length > 0 && (
-        <div className="border-t pt-2 px-1">
-          <div className="text-[10px] font-semibold text-muted-foreground mb-1.5">Equipamentos por técnico</div>
-          <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-            {techInventory.items.map((item) => {
-              const barW = 160;
-              const s8W = techInventory.maxS8 > 0 ? (item.s8 / techInventory.maxS8) * barW : 0;
-              const g5W = techInventory.maxG5 > 0 ? (item.g5 / techInventory.maxG5) * barW : 0;
-              return (
-                <div key={item.name} className="flex items-center gap-2 text-[11px]">
-                  <span className="w-24 truncate shrink-0 text-muted-foreground">{item.name}</span>
-                  <div className="flex items-center gap-0.5 flex-1">
-                    {item.s8 > 0 && (
-                      <div style={{ width: Math.max(s8W, 4), height: 10, background: "#3b82f6", borderRadius: 2, minWidth: 4 }} title={`S8 Eco: ${item.s8}`} />
-                    )}
-                    {item.g5 > 0 && (
-                      <div style={{ width: Math.max(g5W, 4), height: 10, background: "#f59e0b", borderRadius: 2, minWidth: 4 }} title={`G5+: ${item.g5}`} />
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground tabular-nums w-14 text-right shrink-0">
-                    {item.s8}/{item.g5}
-                  </span>
-                </div>
-              );
-            })}
+        {inventorySummary && (
+          <div className="flex gap-3 text-[10px] text-muted-foreground px-1 flex-wrap border-t pt-1">
+            <span className="font-semibold">Inventário total:</span>
+            <span className="text-green-600">Disponível: {inventorySummary.totalS8 - inventorySummary.usedS8 - inventorySummary.pendS8} S8 ECO / {inventorySummary.totalG5 - inventorySummary.usedG5 - inventorySummary.pendG5} G5+</span>
+            {inventorySummary.usedS8 > 0 && <span>Usados: {inventorySummary.usedS8} S8 ECO / {inventorySummary.usedG5} G5+</span>}
+            {inventorySummary.pendS8 > 0 && <span className="text-amber-500">Pendentes: {inventorySummary.pendS8} S8 ECO / {inventorySummary.pendG5} G5+</span>}
           </div>
+        )}
+      </div>
+      {techInventory.items.length > 0 && (
+        <div className="w-64 shrink-0 border rounded-lg p-3 space-y-2 text-[11px] overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
+          <div className="font-semibold text-muted-foreground">Equipamentos por técnico</div>
+          {techInventory.items.map((item) => {
+            const barW = 160;
+            const s8W = techInventory.maxS8 > 0 ? (item.s8 / techInventory.maxS8) * barW : 0;
+            const g5W = techInventory.maxG5 > 0 ? (item.g5 / techInventory.maxG5) * barW : 0;
+            return (
+              <div key={item.name} className="space-y-0.5">
+                <div className="text-muted-foreground truncate">{item.name}</div>
+                <div className="flex items-center gap-2">
+                  {item.s8 > 0 && (
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <div style={{ width: Math.max(s8W, 4), height: 8, background: "#3b82f6", borderRadius: 2, minWidth: 4 }} title={`S8 Eco: ${item.s8}`} />
+                      <span className="tabular-nums text-muted-foreground">{item.s8}</span>
+                    </div>
+                  )}
+                  {item.g5 > 0 && (
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <div style={{ width: Math.max(g5W, 4), height: 8, background: "#f59e0b", borderRadius: 2, minWidth: 4 }} title={`G5+: ${item.g5}`} />
+                      <span className="tabular-nums text-muted-foreground">{item.g5}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
