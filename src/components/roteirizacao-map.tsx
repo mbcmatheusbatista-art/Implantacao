@@ -437,16 +437,6 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
         ))}
         <span>{points.length} ponto(s) no mapa</span>
         <span>{technicians.length} técnico(s) · {clients.length} cliente(s) na lista</span>
-        {unresolvedTechs.length > 0 && (
-          <span className="text-red-500 font-semibold" title={unresolvedTechs.join("\n")}>
-            {unresolvedTechs.length} técnico(s) sem coordenadas
-          </span>
-        )}
-        {unresolvedClients.length > 0 && (
-          <span className="text-amber-600" title={unresolvedClients.join("\n")}>
-            {unresolvedClients.length} cliente(s) sem coordenadas
-          </span>
-        )}
       </div>
       {inventorySummary && (
         <div className="flex gap-3 text-[10px] text-muted-foreground px-1 flex-wrap border-t pt-1">
