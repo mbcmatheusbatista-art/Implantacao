@@ -36,6 +36,17 @@ function SolicitacoesPage() {
     });
   }, [confirmedServices, selected]);
 
+  function buildTableMessage(services: typeof filtered): string {
+    const lines = services.map((svc) => {
+      const placa = svc.plateOriginal || "-";
+      const nome = svc.responsibleOriginal || "-";
+      const fone = svc.phoneOriginal || "-";
+      const obs = svc.observationsOriginal || "-";
+      return `${placa} | ${nome} | ${fone} | ${obs}`;
+    });
+    return lines.join("\n");
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div>
@@ -75,7 +86,7 @@ function SolicitacoesPage() {
                 onClick={() => {
                   const phone = selected === "Rogério" ? "11 9 4175-4926" : "";
                   if (!phone) return;
-                  const url = buildWhatsAppUrl(phone, "Olá!");
+                  const url = buildWhatsAppUrl(phone, buildTableMessage(filtered));
                   if (!url) {
                     toast.error("Telefone inválido — não é possível abrir o WhatsApp.");
                     return;
