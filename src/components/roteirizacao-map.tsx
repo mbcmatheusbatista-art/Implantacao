@@ -9,6 +9,12 @@ import {
 } from "@/services/distance";
 import type { EquipmentBalance } from "@/services/equipment-balance";
 import { TechSearch } from "./roteirizacao-tech-search";
+import { PlateSearch } from "./roteirizacao-plate-search";
+import { ClientSearch } from "./roteirizacao-client-search";
+import { parsePeopleFromResponsibleText, type PersonInfo } from "@/utils/parse-responsible-contact";
+import { associatePhonesToPeople } from "@/utils/extract-phones";
+import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
+import { getGreetingByCurrentTime } from "@/utils/greeting";
 
 const STATE_REGION: Record<string, string> = {
   AC: "Norte",
@@ -68,6 +74,7 @@ interface Point {
   g5Plus?: number;
   techId?: string;
   clientId?: string;
+  service?: ConfirmedService;
 }
 
 const STATE_CAPITAL: Record<string, string> = {
@@ -131,6 +138,93 @@ function resolveCoords(
     if (capitalKey) return brCityCoords[capitalKey] ?? null;
   }
   return null;
+}
+
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" };
+  return text.replace(/[&<>"']/g, (c) => map[c] || c);
+}
+
+function getStatusColor(status: string): string {
+  if (status === "AGENDAR") return "#f97316";
+  if (status === "AGENDANDO") return "#000000";
+  if (status === "AGENDADO") return "#2563eb";
+  return "";
+}
+
+function buildPlatePopupHtml(service: ConfirmedService): string {
+  const parsed = parsePeopleFromResponsibleText(service.responsibleOriginal);
+  const phones = associatePhonesToPeople(
+    service.phoneOriginal || "",
+    parsed.people.length,
+    parsed.people.findIndex((p) => p.role === "manager"),
+    parsed.people
+      .map((p, i) => (p.role === "vehicle_holder" ? i : -1))
+      .filter((i) => i >= 0),
+  );
+
+  const greeting = getGreetingByCurrentTime();
+
+  const wppSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H8l-4 2 1.5-4.5A8.5 8.5 0 1 1 21 11.5z"/></svg>';
+
+  let html = `<div style="font-size:13px;line-height:1.6;min-width:240px;font-family:Arial,sans-serif;">`;
+
+  html += `<div style="font-weight:700;font-size:14px;margin-bottom:4px;">Placa: ${escapeHtml(service.plateOriginal || "")}</div>`;
+
+  if (parsed.people.length > 0) {
+    html += `<div><strong>Respons\u00e1vel:</strong> ${escapeHtml(parsed.people[0].fullName)}</div>`;
+  }
+
+  const extraPeople = parsed.people.slice(1);
+  for (const p of extraPeople) {
+    if (p.role === "vehicle_holder") {
+      html += `<div style="color:#6b7280;font-size:12px;"><em>est\u00e1 com ${escapeHtml(p.fullName)}</em></div>`;
+    } else if (p.role === "manager") {
+      html += `<div style="color:#6b7280;font-size:12px;"><em>Gestor ${escapeHtml(p.fullName)}</em></div>`;
+    } else {
+      html += `<div style="color:#6b7280;font-size:12px;"><em>${escapeHtml(p.fullName)}</em></div>`;
+    }
+  }
+
+  if (service.fullAddress) {
+    html += `<div><strong>Endere\u00e7o:</strong> ${escapeHtml(service.fullAddress)}</div>`;
+  }
+
+  const dataHora = service.dataHora ? service.dataHora : "";
+  if (dataHora) {
+    html += `<div><strong>Data/Hora:</strong> ${escapeHtml(dataHora)}</div>`;
+  }
+
+  const status = service.serviceStatus || "";
+  html += `<div><strong>Status:</strong> ${escapeHtml(status || "-")}</div>`;
+
+  let hasAnyUrl = false;
+  html += `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">`;
+
+  for (let i = 0; i < parsed.people.length; i++) {
+    const person = parsed.people[i];
+    const phoneInfo = phones[i];
+    if (!phoneInfo || !phoneInfo.phone) continue;
+
+    const shortName = person.firstName || person.fullName.split(" ")[0] || "Contato";
+    const msg = `Ol\u00e1, ${greeting} ${shortName}!`;
+    const url = buildWhatsAppUrl(phoneInfo.phone, msg);
+    if (!url) continue;
+    hasAnyUrl = true;
+
+    const isVehicleHolder = person.role === "vehicle_holder" && i > 0;
+    const bgColor = isVehicleHolder ? "#dc2626" : "#25D366";
+    const displayName = isVehicleHolder ? `est\u00e1 com ${shortName}` : shortName;
+    html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:${bgColor};color:white;text-decoration:none;border-radius:4px;font-size:12px;font-weight:600;">${wppSvg} ${escapeHtml(displayName)}</a>`;
+  }
+
+  if (!hasAnyUrl && service.phoneOriginal) {
+    html += `<span style="font-size:11px;color:#9ca3af;">Telefone n\u00e3o dispon\u00edvel</span>`;
+  }
+
+  html += `</div></div>`;
+
+  return html;
 }
 
 export const RoteirizacaoMap = memo(function RoteirizacaoMap({
@@ -210,7 +304,6 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
       const coords = resolveCoords(c.cityDetected || "", c.stateDetected || "", destQuery);
       if (coords) {
         const extraLines: string[] = [];
-        if (c.serviceStatus) extraLines.push(`Status: ${c.serviceStatus}`);
         if (c.technicianOriginal) extraLines.push(`Técnico: ${c.technicianOriginal}`);
         pts.push({
           ...coords,
@@ -220,6 +313,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
           city: c.cityDetected || "",
           state: c.stateDetected || "",
           extra: extraLines.join("<br/>"),
+          clientId: c.id,
+          service: c,
         });
         clientCount.resolved++;
       } else {
@@ -250,10 +345,21 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
   const stateLayerRef = useRef<L.GeoJSON | null>(null);
   const techMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const clientMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const leafletRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
   const [renderTick, setRenderTick] = useState(0);
+  const [clientSearchActive, setClientSearchActive] = useState(false);
+  const [clientFilterIds, setClientFilterIds] = useState<Set<string>>(new Set());
+  const pendingFitBoundsRef = useRef<{ validIds: string[] } | null>(null);
+  const searchAreaRef = useRef<HTMLDivElement>(null);
+
+  const visiblePoints = useMemo(() => {
+    if (!clientSearchActive || clientFilterIds.size === 0) return points;
+    return points.filter((p) => p.type === "tech" || (p.type === "client" && p.clientId && clientFilterIds.has(p.clientId)));
+  }, [points, clientSearchActive, clientFilterIds]);
+
   console.log(
     "[MAPA] Render (techs=" +
       technicians.length +
@@ -316,10 +422,10 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     };
   }, [ready]);
 
-  // Force marker re-apply whenever technicians or clients change
+  // Force marker re-apply whenever technicians, clients, or filter state change
   useEffect(() => {
     setRenderTick((t) => t + 1);
-  }, [technicians, clients]);
+  }, [technicians, clients, clientSearchActive, clientFilterIds]);
 
   // Load Brazilian states GeoJSON for border rendering
   useEffect(() => {
@@ -376,7 +482,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     };
   }, [mapReady]);
 
-  // Update markers when points or mapReady or renderTick change (without destroying the map)
+  // Update markers when visiblePoints or mapReady or renderTick change (without destroying the map)
   useEffect(() => {
     const map = mapInstanceRef.current;
     const layerGroup = markerLayerRef.current;
@@ -386,10 +492,11 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     // Clear existing markers
     layerGroup.clearLayers();
     techMarkersRef.current.clear();
+    clientMarkersRef.current.clear();
 
     const cityCount = new Map<string, number>();
 
-    for (const p of points) {
+    for (const p of visiblePoints) {
       const coordKey = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
       const count = cityCount.get(coordKey) ?? 0;
       cityCount.set(coordKey, count + 1);
@@ -400,11 +507,16 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
       const lng = p.lng + offsetLng;
 
       const isTech = p.type === "tech";
+      const grad = isTech
+        ? "linear-gradient(145deg, #3b82f6, #1d4ed8)"
+        : "linear-gradient(145deg, #ef4444, #b91c1c)";
       const color = isTech ? "#2563eb" : "#dc2626";
       const shape = isTech ? "circle" : "square";
-      const letter = isTech ? "T" : "C";
+      const techSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`;
+      const car3dSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><defs><linearGradient id="cb3d" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset="1" stop-color="#991b1b"/></linearGradient></defs><ellipse cx="12" cy="21" rx="9" ry="1.5" fill="rgba(0,0,0,0.12)"/><path d="M2 16c0-1 .8-1.8 1.5-2.2L7 11.5c.5-.3 1-.5 1.5-.5h7c.5 0 1 .2 1.5.5l3.5 2.3c.7.4 1.5 1.2 1.5 2.2v2H2z" fill="url(#cb3d)"/><path d="M8 12l1.5-2.2c.3-.4.7-.7 1.2-.7h2.6c.5 0 1 .3 1.2.7L16 12z" fill="#991b1b"/><path d="M9.5 12l.8-1.4c.2-.3.4-.5.7-.5h.5V12z" fill="#bfdbfe" opacity=".6"/><path d="M13 12V10h.3c.3 0 .5.2.7.5l.8 1.5z" fill="#bfdbfe" opacity=".6"/><circle cx="6" cy="18" r="2.2" fill="#1f2937"/><circle cx="6" cy="18" r="1" fill="#6b7280"/><circle cx="18" cy="18" r="2.2" fill="#1f2937"/><circle cx="18" cy="18" r="1" fill="#6b7280"/><rect x="20" y="14" width="1.5" height="1" rx=".3" fill="#fbbf24"/><rect x="2.5" y="14.5" width="1" height=".8" rx=".2" fill="#ef4444"/></svg>`;
 
       let nameHtml = "";
+      let statusHtml = "";
       let badgeHtml = "";
       let iconW = 22,
         iconH = 22,
@@ -424,6 +536,30 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
         iconH = 22;
         ancX = 70;
         ancY = 22;
+      } else {
+        iconW = 32;
+        iconH = 32;
+        ancX = 16;
+        ancY = 32;
+      }
+      if (!isTech && p.service?.serviceStatus) {
+        const s = p.service.serviceStatus;
+        const sColor = getStatusColor(s);
+        if (sColor) {
+          statusHtml = `<div style="
+            font-size:11px;font-weight:700;white-space:nowrap;
+            color:${sColor};
+            background:rgba(255,255,255,0.85);
+            padding:0 6px;border-radius:3px;line-height:1.6;
+            margin-bottom:2px;text-align:center;
+            box-shadow:0 1px 3px rgba(0,0,0,0.2);
+            border:1px solid rgba(0,0,0,0.08);
+          ">${escapeHtml(s)}</div>`;
+          iconW = 90;
+          iconH = 50;
+          ancX = 45;
+          ancY = 50;
+        }
       }
       if (isTech && (p.s8Eco || p.g5Plus)) {
         const parts: string[] = [];
@@ -453,17 +589,18 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
         className: "",
         html: `<div style="display:flex;flex-direction:column;align-items:center;width:${iconW}px">
           ${nameHtml}
-          <div style="
+          ${statusHtml}
+          ${isTech ? `<div style="
             width: 22px; height: 22px;
-            background: ${color};
-            border: 2px solid white;
-            border-radius: ${shape === "circle" ? "50%" : "3px"};
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            background: ${grad};
+            border: 2px solid rgba(255,255,255,0.9);
+            border-radius: 50%;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.25);
             display: flex; align-items: center; justify-content: center;
             color: white; font-size: 11px; font-weight: 700;
             font-family: Arial, sans-serif;
             cursor: pointer;
-          ">${letter}</div>
+          ">${techSvg}</div>` : car3dSvg}
           ${badgeHtml}
         </div>`,
         iconSize: [iconW, iconH],
@@ -471,30 +608,88 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
       });
 
       const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
-      const tooltipHtml = `<strong>${p.label}</strong><br/>${p.details}<br/><em>${isTech ? "Técnico" : "Cliente"}</em>${p.extra ? `<br/>${p.extra}` : ""}`;
+
+      let tooltipHtml: string;
+      if (isTech) {
+        tooltipHtml = `<strong>${escapeHtml(p.label)}</strong><br/>${p.details}<br/><em>Técnico</em>${p.extra ? `<br/>${p.extra}` : ""}`;
+      } else {
+        const status = p.service?.serviceStatus || "";
+        const statusColor = getStatusColor(status);
+        tooltipHtml = `<strong>${escapeHtml(p.label)}</strong><br/>${p.details}<br/><em>Cliente</em>`;
+        if (status && statusColor) {
+          tooltipHtml += `<br/><span style="color:${statusColor};font-weight:700;font-size:13px;">${escapeHtml(status)}</span>`;
+        } else if (status) {
+          tooltipHtml += `<br/>${escapeHtml(status)}`;
+        }
+        if (p.extra) tooltipHtml += `<br/>${p.extra}`;
+      }
       marker.bindTooltip(tooltipHtml, { direction: "top" });
+      if (!isTech && p.service) {
+        const popupHtml = buildPlatePopupHtml(p.service);
+        marker.bindPopup(popupHtml, { maxWidth: 320, minWidth: 260 });
+      }
       if (isTech && p.techId) {
         techMarkersRef.current.set(p.techId, marker);
+      }
+      if (!isTech && p.clientId) {
+        clientMarkersRef.current.set(p.clientId, marker);
       }
     }
 
     // Debug: check actual marker count vs expected
     const actualMarkers = layerGroup.getLayers().length;
     console.log("[MAPA] Marcadores atualizados", {
-      esperado: points.length,
+      esperado: visiblePoints.length,
       noMapa: actualMarkers,
-      tecnicos: points.filter((p) => p.type === "tech").map((p) => p.label),
-      clientes: points.filter((p) => p.type === "client").map((p) => p.label),
+      tecnicos: visiblePoints.filter((p) => p.type === "tech").map((p) => p.label),
+      clientes: visiblePoints.filter((p) => p.type === "client").map((p) => p.label),
+      filtroAtivo: clientSearchActive,
+      filtroIds: clientSearchActive ? [...clientFilterIds] : [],
     });
 
     map.invalidateSize();
 
-    // Fit bounds to all points
-    if (points.length > 0) {
-      const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lng]));
+    // Fit bounds to all points (respecting current filter)
+    if (visiblePoints.length > 0) {
+      const bounds = L.latLngBounds(visiblePoints.map((p) => [p.lat, p.lng]));
       map.fitBounds(bounds, { padding: [50, 50] });
     }
-  }, [points, mapReady, renderTick]);
+
+    // Handle pending fitBounds/flyTo from client person selection
+    if (pendingFitBoundsRef.current) {
+      const { validIds } = pendingFitBoundsRef.current;
+      pendingFitBoundsRef.current = null;
+      const validLatLngs: L.LatLng[] = [];
+      for (const id of validIds) {
+        const marker = clientMarkersRef.current.get(id);
+        if (marker) {
+          validLatLngs.push(marker.getLatLng());
+          const el = marker.getElement();
+          if (el) {
+            el.classList.add("client-marker-highlight");
+            setTimeout(() => el.classList.remove("client-marker-highlight"), 3000);
+          }
+        }
+      }
+      if (validLatLngs.length === 1) {
+        map.flyTo(validLatLngs[0], 14, { duration: 1 });
+      } else if (validLatLngs.length > 1) {
+        const bounds = L.latLngBounds(validLatLngs);
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+      }
+    }
+  }, [visiblePoints, mapReady, renderTick]);
+
+  // Refresh marker icons on zoom to ensure badges render correctly
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    function refresh() {
+      map.invalidateSize();
+    }
+    map.on("zoomend", refresh);
+    return () => map.off("zoomend", refresh);
+  }, []);
 
   // Tech inventory list with bars
   const techInventory = useMemo(() => {
@@ -564,11 +759,72 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     }
   }, []);
 
+  const handlePlateSelect = useCallback((service: ConfirmedService) => {
+    const map = mapInstanceRef.current;
+    const marker = clientMarkersRef.current.get(service.id);
+    const L = leafletRef.current;
+    if (!map || !L || !marker) return;
+
+    const hasAddr = (service.fullAddress || "").trim().toLowerCase();
+    const invalidAddr = !hasAddr || hasAddr === "-" || hasAddr === "não informado" || hasAddr === "nao informado" || hasAddr === "sem endereço" || hasAddr === "sem endereco";
+
+    if (invalidAddr) return;
+
+    const popupHtml = buildPlatePopupHtml(service);
+    marker.bindPopup(popupHtml, { maxWidth: 320, minWidth: 260 });
+    marker.openPopup();
+
+    map.flyTo(marker.getLatLng(), 14, { duration: 1 });
+
+    const el = marker.getElement();
+    if (el) {
+      el.classList.add("client-marker-highlight");
+      setTimeout(() => el.classList.remove("client-marker-highlight"), 3000);
+    }
+  }, []);
+
+  const handleClientFilter = useCallback((_personName: string, allIds: string[], validIds: string[]) => {
+    setClientSearchActive(true);
+    setClientFilterIds(new Set(allIds));
+    pendingFitBoundsRef.current = { validIds };
+  }, []);
+
+  const handleClearClientFilter = useCallback(() => {
+    setClientSearchActive(false);
+    setClientFilterIds(new Set());
+    pendingFitBoundsRef.current = null;
+  }, []);
+
+  // Clear client filter when focusing on tech or plate search
+  useEffect(() => {
+    if (!clientSearchActive) return;
+    function handleFocusIn(e: FocusEvent) {
+      const target = e.target as HTMLElement;
+      if (!target || !target.closest) return;
+      const inTechOrPlate = target.closest('[data-search="tech"], [data-search="plate"]');
+      if (inTechOrPlate) {
+        handleClearClientFilter();
+      }
+    }
+    document.addEventListener("focusin", handleFocusIn);
+    return () => document.removeEventListener("focusin", handleFocusIn);
+  }, [clientSearchActive, handleClearClientFilter]);
+
   // Layout: map on left, tech inventory on right
   return (
     <div className="flex gap-3">
       <div className="flex-1 min-w-0 space-y-1 overflow-hidden">
-        <TechSearch technicians={visibleTechs} onSelect={handleTechSelect} />
+        <div ref={searchAreaRef} className="flex flex-col sm:flex-row gap-2">
+          <div className="flex-1 min-w-0" data-search="tech">
+            <TechSearch technicians={visibleTechs} onSelect={handleTechSelect} />
+          </div>
+          <div className="flex-1 min-w-0" data-search="plate">
+            <PlateSearch clients={clients} onSelect={handlePlateSelect} />
+          </div>
+          <div className="flex-1 min-w-0" data-search="client">
+            <ClientSearch clients={clients} onSelectVehicle={handlePlateSelect} onFilterPerson={handleClientFilter} onClearFilter={handleClearClientFilter} />
+          </div>
+        </div>
         <div
           ref={mapRef}
           style={{
@@ -707,6 +963,14 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
           animation: tech-pulse 0.8s ease-in-out 4;
         }
         @keyframes tech-pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.2); }
+        }
+        .client-marker-highlight .leaflet-marker-icon {
+          filter: drop-shadow(0 0 8px rgba(220, 38, 38, 0.9)) !important;
+          animation: client-pulse 0.8s ease-in-out 4;
+        }
+        @keyframes client-pulse {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.2); }
         }
