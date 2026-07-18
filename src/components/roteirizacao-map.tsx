@@ -46,6 +46,7 @@ const STATE_REGION: Record<string, string> = {
   SC: "Sul",
 };
 
+const STATUS_ZOOM = 7;
 const REGION_COLORS: Record<string, string> = {
   Norte: "#2E7D9E",
   Nordeste: "#C0723C",
@@ -542,25 +543,6 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
         ancX = 16;
         ancY = 32;
       }
-      if (!isTech && p.service?.serviceStatus) {
-        const s = p.service.serviceStatus;
-        const sColor = getStatusColor(s);
-        if (sColor) {
-          statusHtml = `<div style="
-            font-size:11px;font-weight:700;white-space:nowrap;
-            color:${sColor};
-            background:rgba(255,255,255,0.85);
-            padding:0 6px;border-radius:3px;line-height:1.6;
-            margin-bottom:2px;text-align:center;
-            box-shadow:0 1px 3px rgba(0,0,0,0.2);
-            border:1px solid rgba(0,0,0,0.08);
-          ">${escapeHtml(s)}</div>`;
-          iconW = 90;
-          iconH = 50;
-          ancX = 45;
-          ancY = 50;
-        }
-      }
       if (isTech && (p.s8Eco || p.g5Plus)) {
         const parts: string[] = [];
         if (p.s8Eco) parts.push(`📷${p.s8Eco}`);
@@ -609,6 +591,14 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
 
       const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
 
+      if (!isTech && p.service?.serviceStatus) {
+        const s = p.service.serviceStatus;
+        const sColor = getStatusColor(s);
+        if (sColor) {
+          (marker as any).__clientStatus = { text: s, color: sColor };
+        }
+      }
+
       let tooltipHtml: string;
       if (isTech) {
         tooltipHtml = `<strong>${escapeHtml(p.label)}</strong><br/>${p.details}<br/><em>Técnico</em>${p.extra ? `<br/>${p.extra}` : ""}`;
@@ -655,6 +645,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
       map.fitBounds(bounds, { padding: [50, 50] });
     }
 
+    updateStatusBadges(map);
+
     // Handle pending fitBounds/flyTo from client person selection
     if (pendingFitBoundsRef.current) {
       const { validIds } = pendingFitBoundsRef.current;
@@ -680,16 +672,38 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     }
   }, [visiblePoints, mapReady, renderTick]);
 
-  // Refresh marker icons on zoom to ensure badges render correctly
+  const updateStatusBadges = useCallback((map: L.Map) => {
+    const zoom = map.getZoom();
+    for (const [, marker] of clientMarkersRef.current) {
+      const st = (marker as any).__clientStatus as { text: string; color: string } | undefined;
+      const el = marker.getElement();
+      if (!el || !st) continue;
+      const existing = el.querySelector(".client-status-badge") as HTMLElement | null;
+      if (zoom >= STATUS_ZOOM) {
+        if (!existing) {
+          el.style.position = "relative";
+          const badge = document.createElement("div");
+          badge.className = "client-status-badge";
+          badge.textContent = st.text;
+          badge.style.cssText = `position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:11px;font-weight:700;white-space:nowrap;color:${st.color};background:rgba(255,255,255,0.85);padding:0 6px;border-radius:3px;line-height:1.6;box-shadow:0 1px 3px rgba(0,0,0,0.2);border:1px solid rgba(0,0,0,0.08);pointer-events:none;`;
+          el.prepend(badge);
+        }
+      } else {
+        if (existing) existing.remove();
+      }
+    }
+  }, []);
+
+  // Refresh marker badges on zoom
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
     function refresh() {
-      map.invalidateSize();
+      updateStatusBadges(map);
     }
     map.on("zoomend", refresh);
     return () => map.off("zoomend", refresh);
-  }, []);
+  }, [updateStatusBadges, mapReady]);
 
   // Tech inventory list with bars
   const techInventory = useMemo(() => {
