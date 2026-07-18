@@ -1,23 +1,51 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConfirmedService, Technician } from "@/types";
 import { brCityCoords } from "@/services/br-city-coords";
-import { normalize, extractCity, getServiceDestination, type RouteDistance } from "@/services/distance";
+import {
+  normalize,
+  extractCity,
+  getServiceDestination,
+  type RouteDistance,
+} from "@/services/distance";
 import type { EquipmentBalance } from "@/services/equipment-balance";
+import { TechSearch } from "./roteirizacao-tech-search";
 
 const STATE_REGION: Record<string, string> = {
-  AC: "Norte", AP: "Norte", AM: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
-  AL: "Nordeste", BA: "Nordeste", CE: "Nordeste", MA: "Nordeste", PB: "Nordeste", PE: "Nordeste", PI: "Nordeste", RN: "Nordeste", SE: "Nordeste",
-  DF: "Centro-Oeste", GO: "Centro-Oeste", MT: "Centro-Oeste", MS: "Centro-Oeste",
-  ES: "Sudeste", MG: "Sudeste", RJ: "Sudeste", SP: "Sudeste",
-  PR: "Sul", RS: "Sul", SC: "Sul",
+  AC: "Norte",
+  AP: "Norte",
+  AM: "Norte",
+  PA: "Norte",
+  RO: "Norte",
+  RR: "Norte",
+  TO: "Norte",
+  AL: "Nordeste",
+  BA: "Nordeste",
+  CE: "Nordeste",
+  MA: "Nordeste",
+  PB: "Nordeste",
+  PE: "Nordeste",
+  PI: "Nordeste",
+  RN: "Nordeste",
+  SE: "Nordeste",
+  DF: "Centro-Oeste",
+  GO: "Centro-Oeste",
+  MT: "Centro-Oeste",
+  MS: "Centro-Oeste",
+  ES: "Sudeste",
+  MG: "Sudeste",
+  RJ: "Sudeste",
+  SP: "Sudeste",
+  PR: "Sul",
+  RS: "Sul",
+  SC: "Sul",
 };
 
 const REGION_COLORS: Record<string, string> = {
-  "Norte": "#2E7D9E",
-  "Nordeste": "#C0723C",
+  Norte: "#2E7D9E",
+  Nordeste: "#C0723C",
   "Centro-Oeste": "#8A7A3A",
-  "Sudeste": "#3D8F53",
-  "Sul": "#7A4F9E",
+  Sudeste: "#3D8F53",
+  Sul: "#7A4F9E",
 };
 
 interface Props {
@@ -38,6 +66,8 @@ interface Point {
   extra?: string;
   s8Eco?: number;
   g5Plus?: number;
+  techId?: string;
+  clientId?: string;
 }
 
 const STATE_CAPITAL: Record<string, string> = {
@@ -70,7 +100,11 @@ const STATE_CAPITAL: Record<string, string> = {
   to: "palmas, to",
 };
 
-function resolveCoords(city: string, state: string, destQuery?: string): { lat: number; lng: number } | null {
+function resolveCoords(
+  city: string,
+  state: string,
+  destQuery?: string,
+): { lat: number; lng: number } | null {
   const normState = (state || "").toLocaleLowerCase("pt-BR");
   const normCity = normalize(city?.toLocaleLowerCase("pt-BR") || "");
   // 1. Try exact city+state match (works when cityDetected is populated)
@@ -99,7 +133,12 @@ function resolveCoords(city: string, state: string, destQuery?: string): { lat: 
   return null;
 }
 
-export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clients, balances, routesByTech }: Props) {
+export const RoteirizacaoMap = memo(function RoteirizacaoMap({
+  technicians,
+  clients,
+  balances,
+  routesByTech,
+}: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const [ready, setReady] = useState(false);
@@ -127,13 +166,19 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
         const extraLines: string[] = [];
         if (bal) {
           if (bal.inventory.s8Eco > 0 || bal.inventory.g5Plus > 0) {
-            extraLines.push(`Estoque: ${bal.inventory.s8Eco} S8 ECO${bal.inventory.g5Plus > 0 ? ` + ${bal.inventory.g5Plus} G5` : ""}`);
+            extraLines.push(
+              `Estoque: ${bal.inventory.s8Eco} S8 ECO${bal.inventory.g5Plus > 0 ? ` + ${bal.inventory.g5Plus} G5` : ""}`,
+            );
           }
           if (bal.used.s8Eco > 0 || bal.used.g5Plus > 0) {
-            extraLines.push(`Usados: ${bal.used.s8Eco} S8 ECO${bal.used.g5Plus > 0 ? ` + ${bal.used.g5Plus} G5` : ""}`);
+            extraLines.push(
+              `Usados: ${bal.used.s8Eco} S8 ECO${bal.used.g5Plus > 0 ? ` + ${bal.used.g5Plus} G5` : ""}`,
+            );
           }
           if (bal.available.s8Eco > 0 || bal.available.g5Plus > 0) {
-            extraLines.push(`Disponível: ${bal.available.s8Eco} S8 ECO${bal.available.g5Plus > 0 ? ` + ${bal.available.g5Plus} G5` : ""}`);
+            extraLines.push(
+              `Disponível: ${bal.available.s8Eco} S8 ECO${bal.available.g5Plus > 0 ? ` + ${bal.available.g5Plus} G5` : ""}`,
+            );
           } else if (bal.inventory.s8Eco > 0 || bal.inventory.g5Plus > 0) {
             extraLines.push("Sem saldo disponível");
           }
@@ -150,10 +195,13 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           extra: extraLines.join("<br/>"),
           s8Eco: s8,
           g5Plus: g5,
+          techId: t.id,
         });
         techCount.resolved++;
       } else {
-        unresolvedT.push(`${t.nameOriginal || "?"} (cidade: "${t.cityOriginal}", estado: "${t.state}")`);
+        unresolvedT.push(
+          `${t.nameOriginal || "?"} (cidade: "${t.cityOriginal}", estado: "${t.state}")`,
+        );
       }
     }
     const clientCount = { total: clients.length, resolved: 0 };
@@ -188,7 +236,10 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     }
     console.log("[MAPA] Resumo pontos", { techCount, clientCount, totalPontos: pts.length });
     if (pts.length > 0) {
-      console.log("[MAPA] Pontos:", pts.map((p) => `${p.type}:${p.label} @ ${p.lat},${p.lng} [${p.city}/${p.state}]`));
+      console.log(
+        "[MAPA] Pontos:",
+        pts.map((p) => `${p.type}:${p.label} @ ${p.lat},${p.lng} [${p.city}/${p.state}]`),
+      );
     }
     if (unresolvedT.length > 0) {
       console.warn("[MAPA] Técnicos sem coordenadas:", unresolvedT);
@@ -198,11 +249,22 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
 
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
   const stateLayerRef = useRef<L.GeoJSON | null>(null);
+  const techMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const leafletRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
   const [renderTick, setRenderTick] = useState(0);
-  console.log("[MAPA] Render (techs=" + technicians.length + ", clients=" + clients.length + ", ready=" + (mapReady ? "S" : "N") + ", tick=" + renderTick + ")");
+  console.log(
+    "[MAPA] Render (techs=" +
+      technicians.length +
+      ", clients=" +
+      clients.length +
+      ", ready=" +
+      (mapReady ? "S" : "N") +
+      ", tick=" +
+      renderTick +
+      ")",
+  );
 
   // Initialize the map once (on mount)
   useEffect(() => {
@@ -270,7 +332,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
 
     async function loadStates() {
       try {
-        const res = await fetch("https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson");
+        const res = await fetch(
+          "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson",
+        );
         if (cancelled) return;
         const data = await res.json();
         if (cancelled) return;
@@ -279,8 +343,16 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           pane: "statesPane",
           interactive: false,
           style: (feature: unknown) => {
-            const props = (feature as Record<string, unknown>)?.properties as Record<string, string> || {};
-            const stateAbbr = (props.sigla || props.SIGLA || props.abbrev || props.UF || props.uf || "").toUpperCase();
+            const props =
+              ((feature as Record<string, unknown>)?.properties as Record<string, string>) || {};
+            const stateAbbr = (
+              props.sigla ||
+              props.SIGLA ||
+              props.abbrev ||
+              props.UF ||
+              props.uf ||
+              ""
+            ).toUpperCase();
             const region = STATE_REGION[stateAbbr];
             const color = region ? REGION_COLORS[region] : "#777";
             return {
@@ -299,7 +371,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
 
     loadStates();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [mapReady]);
 
   // Update markers when points or mapReady or renderTick change (without destroying the map)
@@ -311,6 +385,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
 
     // Clear existing markers
     layerGroup.clearLayers();
+    techMarkersRef.current.clear();
 
     const cityCount = new Map<string, number>();
 
@@ -331,7 +406,10 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
 
       let nameHtml = "";
       let badgeHtml = "";
-      let iconW = 22, iconH = 22, ancX = 11, ancY = 11;
+      let iconW = 22,
+        iconH = 22,
+        ancX = 11,
+        ancY = 11;
       if (isTech) {
         nameHtml = `<div style="
           font-size: 12px; font-weight: 600; white-space: nowrap;
@@ -342,13 +420,19 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           text-align: center;
           color: #2563eb;
         ">${p.label}</div>`;
-        iconW = 140; iconH = 22; ancX = 70; ancY = 22;
+        iconW = 140;
+        iconH = 22;
+        ancX = 70;
+        ancY = 22;
       }
       if (isTech && (p.s8Eco || p.g5Plus)) {
         const parts: string[] = [];
         if (p.s8Eco) parts.push(`📷${p.s8Eco}`);
         if (p.g5Plus) parts.push(`🛰️${p.g5Plus}`);
-        const warn = (p.s8Eco !== undefined && p.s8Eco === 1) || (p.g5Plus !== undefined && p.g5Plus === 1) ? " ⚠️" : "";
+        const warn =
+          (p.s8Eco !== undefined && p.s8Eco === 1) || (p.g5Plus !== undefined && p.g5Plus === 1)
+            ? " ⚠️"
+            : "";
         if (parts.length || warn) {
           badgeHtml = `<div style="
             font-size: 13px; white-space: nowrap;
@@ -358,7 +442,10 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
             margin-top: 2px; line-height: 1.4;
             text-align: center;
           ">${parts.join(" ")}${warn}</div>`;
-          iconW = 140; iconH = 56; ancX = 70; ancY = 22;
+          iconW = 140;
+          iconH = 56;
+          ancX = 70;
+          ancY = 22;
         }
       }
 
@@ -386,6 +473,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
       const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
       const tooltipHtml = `<strong>${p.label}</strong><br/>${p.details}<br/><em>${isTech ? "Técnico" : "Cliente"}</em>${p.extra ? `<br/>${p.extra}` : ""}`;
       marker.bindTooltip(tooltipHtml, { direction: "top" });
+      if (isTech && p.techId) {
+        techMarkersRef.current.set(p.techId, marker);
+      }
     }
 
     // Debug: check actual marker count vs expected
@@ -409,7 +499,8 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
   // Tech inventory list with bars
   const techInventory = useMemo(() => {
     const items: { name: string; s8: number; g5: number }[] = [];
-    let maxS8 = 0, maxG5 = 0;
+    let maxS8 = 0,
+      maxG5 = 0;
     for (const t of technicians) {
       const b = balances?.get(t.id);
       const s8 = b?.inventory.s8Eco ?? 0;
@@ -426,7 +517,12 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
   // Summary inventory
   const inventorySummary = useMemo(() => {
     if (!balances || balances.size === 0) return null;
-    let totalS8 = 0, totalG5 = 0, usedS8 = 0, usedG5 = 0, pendS8 = 0, pendG5 = 0;
+    let totalS8 = 0,
+      totalG5 = 0,
+      usedS8 = 0,
+      usedG5 = 0,
+      pendS8 = 0,
+      pendG5 = 0;
     for (const b of balances.values()) {
       totalS8 += b.inventory.s8Eco;
       totalG5 += b.inventory.g5Plus;
@@ -439,40 +535,121 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
     return { totalS8, totalG5, usedS8, usedG5, pendS8, pendG5 };
   }, [balances]);
 
+  // Techs visible on the map (for search filtering)
+  const visibleTechs = useMemo(() => {
+    const techIdsOnMap = new Set(points.filter((p) => p.type === "tech").map((p) => p.techId));
+    return technicians.filter((t) => techIdsOnMap.has(t.id));
+  }, [technicians, points]);
+
+  const handleTechSelect = useCallback((tech: Technician) => {
+    const map = mapInstanceRef.current;
+    const marker = techMarkersRef.current.get(tech.id);
+    const L = leafletRef.current;
+    if (!map || !marker || !L) return;
+
+    map.flyTo(marker.getLatLng(), 14, { duration: 1 });
+
+    setTimeout(() => {
+      try {
+        marker.openPopup();
+      } catch {
+        /* ignore */
+      }
+    }, 300);
+
+    const el = marker.getElement();
+    if (el) {
+      el.classList.add("tech-marker-highlight");
+      setTimeout(() => el.classList.remove("tech-marker-highlight"), 3000);
+    }
+  }, []);
+
   // Layout: map on left, tech inventory on right
   return (
     <div className="flex gap-3">
       <div className="flex-1 min-w-0 space-y-1 overflow-hidden">
-        <div ref={mapRef} style={{ width: "100%", height: "calc(100vh - 160px)", minHeight: "400px", borderRadius: "8px" }} className="border" />
+        <TechSearch technicians={visibleTechs} onSelect={handleTechSelect} />
+        <div
+          ref={mapRef}
+          style={{
+            width: "100%",
+            height: "calc(100vh - 160px)",
+            minHeight: "400px",
+            borderRadius: "8px",
+          }}
+          className="border"
+        />
         <div className="flex gap-4 text-xs text-muted-foreground px-1 flex-wrap">
           <span className="flex items-center gap-1">
-            <span style={{ display: "inline-block", width: 12, height: 12, background: "#2563eb", borderRadius: "50%", border: "1px solid white" }} />
+            <span
+              style={{
+                display: "inline-block",
+                width: 12,
+                height: 12,
+                background: "#2563eb",
+                borderRadius: "50%",
+                border: "1px solid white",
+              }}
+            />
             Técnico
           </span>
           <span className="flex items-center gap-1">
-            <span style={{ display: "inline-block", width: 12, height: 12, background: "#dc2626", borderRadius: 3 }} />
+            <span
+              style={{
+                display: "inline-block",
+                width: 12,
+                height: 12,
+                background: "#dc2626",
+                borderRadius: 3,
+              }}
+            />
             Cliente
           </span>
           {Object.entries(REGION_COLORS).map(([region, color]) => (
             <span key={region} className="flex items-center gap-1">
-              <span style={{ display: "inline-block", width: 16, height: 3, background: color, borderRadius: 1 }} />
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 16,
+                  height: 3,
+                  background: color,
+                  borderRadius: 1,
+                }}
+              />
               {region}
             </span>
           ))}
           <span>{points.length} ponto(s) no mapa</span>
-          <span>{technicians.length} técnico(s) · {clients.length} cliente(s) na lista</span>
+          <span>
+            {technicians.length} técnico(s) · {clients.length} cliente(s) na lista
+          </span>
         </div>
         {inventorySummary && (
           <div className="flex gap-3 text-[10px] text-muted-foreground px-1 flex-wrap border-t pt-1">
             <span className="font-semibold">Inventário total:</span>
-            <span className="text-green-600">Disponível: {inventorySummary.totalS8 - inventorySummary.usedS8 - inventorySummary.pendS8} S8 ECO / {inventorySummary.totalG5 - inventorySummary.usedG5 - inventorySummary.pendG5} G5+</span>
-            {inventorySummary.usedS8 > 0 && <span>Usados: {inventorySummary.usedS8} S8 ECO / {inventorySummary.usedG5} G5+</span>}
-            {inventorySummary.pendS8 > 0 && <span className="text-amber-500">Pendentes: {inventorySummary.pendS8} S8 ECO / {inventorySummary.pendG5} G5+</span>}
+            <span className="text-green-600">
+              Disponível:{" "}
+              {inventorySummary.totalS8 - inventorySummary.usedS8 - inventorySummary.pendS8} S8 ECO
+              / {inventorySummary.totalG5 - inventorySummary.usedG5 - inventorySummary.pendG5} G5+
+            </span>
+            {inventorySummary.usedS8 > 0 && (
+              <span>
+                Usados: {inventorySummary.usedS8} S8 ECO / {inventorySummary.usedG5} G5+
+              </span>
+            )}
+            {inventorySummary.pendS8 > 0 && (
+              <span className="text-amber-500">
+                Pendentes: {inventorySummary.pendS8} S8 ECO / {inventorySummary.pendG5} G5+
+              </span>
+            )}
           </div>
         )}
       </div>
       {techInventory.items.length > 0 && (
-        <div className="w-auto min-w-48 max-w-72 shrink-0 border rounded-lg p-3 space-y-3 text-[11px] overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
+        <div
+          className="w-auto min-w-48 max-w-72 shrink-0 border rounded-lg p-3 space-y-3 text-[11px] overflow-y-auto"
+          style={{ maxHeight: "calc(100vh - 160px)" }}
+        >
           <div className="font-semibold text-muted-foreground">Equipamentos por técnico</div>
           {techInventory.items.map((item) => {
             const MAX_DOTS = 30;
@@ -486,14 +663,34 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
                 <div className="text-muted-foreground truncate mb-1">{item.name}</div>
                 <div className="flex flex-wrap items-center gap-0.5">
                   {Array.from({ length: s8Dots }).map((_, i) => (
-                    <div key={`s8-${i}`} style={{ width: barSize, height: barSize, background: "#3b82f6", borderRadius: "1px" }} title={`S8 Eco: ${item.s8}`} />
+                    <div
+                      key={`s8-${i}`}
+                      style={{
+                        width: barSize,
+                        height: barSize,
+                        background: "#3b82f6",
+                        borderRadius: "1px",
+                      }}
+                      title={`S8 Eco: ${item.s8}`}
+                    />
                   ))}
                   {s8Extra > 0 && (
                     <span className="text-[9px] text-muted-foreground ml-0.5">+{s8Extra}</span>
                   )}
-                  {item.s8 > 0 && item.g5 > 0 && <span className="mx-0.5 text-muted-foreground/40" />}
+                  {item.s8 > 0 && item.g5 > 0 && (
+                    <span className="mx-0.5 text-muted-foreground/40" />
+                  )}
                   {Array.from({ length: g5Dots }).map((_, i) => (
-                    <div key={`g5-${i}`} style={{ width: barSize, height: barSize, background: "#f59e0b", borderRadius: "1px" }} title={`G5+: ${item.g5}`} />
+                    <div
+                      key={`g5-${i}`}
+                      style={{
+                        width: barSize,
+                        height: barSize,
+                        background: "#f59e0b",
+                        borderRadius: "1px",
+                      }}
+                      title={`G5+: ${item.g5}`}
+                    />
                   ))}
                   {g5Extra > 0 && (
                     <span className="text-[9px] text-muted-foreground ml-0.5">+{g5Extra}</span>
@@ -504,6 +701,16 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({ technicians, clie
           })}
         </div>
       )}
+      <style>{`
+        .tech-marker-highlight .leaflet-marker-icon {
+          filter: drop-shadow(0 0 8px rgba(255, 165, 0, 0.9)) !important;
+          animation: tech-pulse 0.8s ease-in-out 4;
+        }
+        @keyframes tech-pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.2); }
+        }
+      `}</style>
     </div>
   );
 });
