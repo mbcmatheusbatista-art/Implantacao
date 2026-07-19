@@ -11,11 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Upload, ClipboardCheck, Share2 } from "lucide-react";
+import { MessageCircle, Upload, ClipboardCheck, Share2 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { ImportDialog } from "@/components/import-dialog";
 import { buildConfirmedServices } from "@/services/build-records";
-import { formatPhoneForDisplay } from "@/utils/normalize-phone";
+import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { equipmentLabel } from "@/utils/normalize-equipment";
 
 export const Route = createFileRoute("/atendimentos")({
@@ -146,26 +146,71 @@ function ConfirmedServicesPage() {
                     <th className="p-2">Cidade/UF</th>
                     <th className="p-2">Equipamento</th>
                     <th className="p-2">Status</th>
-                    <th className="p-2">Técnico</th>
+                    <th className="p-2">Possível técnico</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((s) => {
                     const a = store.assignments.find((x) => x.serviceId === s.id);
-                    const t = a ? store.technicians.find((x) => x.id === a.technicianId) : null;
+                    const fmtRe = /\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g;
+                    const cleanName = (s.technicianOriginal ?? "").replace(fmtRe, "").trim();
+                    const t = a
+                      ? store.technicians.find((x) => x.id === a.technicianId)
+                      : cleanName
+                        ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim()))
+                        : null;
                     return (
                       <tr key={s.id} className="border-t hover:bg-muted/30">
                         <td className="p-2 font-mono text-xs">{s.plateOriginal || "—"}</td>
-                        <td className="p-2">{s.responsibleOriginal || "—"}</td>
-                        <td className="p-2 text-xs">
-                          {s.phoneNormalized ? (
-                            formatPhoneForDisplay(s.phoneNormalized)
-                          ) : (
-                            <span className="text-destructive">{s.phoneOriginal || "—"}</span>
-                          )}
+                        <td className="p-2">
+                          {(() => {
+                            const estaCom = s.responsibleOriginal?.match(/\(est[áa] com ((o|a) )?([a-zA-Zà-üÀ-Ü\s]+)\)/i);
+                            const cleanName = s.responsibleOriginal?.replace(/\s*\(est[áa] com ((o|a) )?[a-zA-Zà-üÀ-Ü\s]+\)/i, "").trim() || "—";
+                            const extraPhones = s.phoneOriginal ? [...s.phoneOriginal.matchAll(/\((\d[\d\s\-]*\d)\)/g)].map(m => m[1].trim()) : [];
+                            let extraPhone = extraPhones.length > 0 ? extraPhones[extraPhones.length - 1] : null;
+                            const extraName = estaCom ? estaCom[3].trim() : null;
+                            if (estaCom && !extraPhone) {
+                              const found = services.find((x) => x.responsibleOriginal?.toLowerCase().includes(extraName.toLowerCase()));
+                              if (found) extraPhone = found.phoneNormalized || found.phoneOriginal;
+                            }
+                            const extraUrl = extraPhone ? buildWhatsAppUrl(extraPhone, "") : null;
+                            return (
+                              <>
+                                <div className="font-medium">{cleanName}</div>
+                                {extraName && extraUrl && (
+                                  <div className="flex items-center gap-1 mt-0.5 text-xs">
+                                    <span className="text-muted-foreground">está com {estaCom[2] || ""}</span>
+                                    <a href={extraUrl} target="_blank" rel="noopener noreferrer">
+                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-6 px-2 text-[10px]">
+                                        {extraName}
+                                      </Button>
+                                    </a>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </td>
+                        <td className="p-2">
+                          {(() => {
+                            const phone = s.phoneNormalized || s.phoneOriginal;
+                            const url = phone ? buildWhatsAppUrl(phone, "") : null;
+                            return url ? (
+                              <a href={url} target="_blank" rel="noopener noreferrer">
+                                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                                  <MessageCircle className="w-4 h-4" />
+                                </Button>
+                              </a>
+                            ) : (
+                              <span className="text-destructive text-xs">—</span>
+                            );
+                          })()}
                         </td>
                         <td className="p-2 max-w-xs truncate" title={s.fullAddress}>
-                          {s.fullAddress || <span className="text-muted-foreground">—</span>}
+                          {(() => {
+                            const cleaned = (s.fullAddress ?? "").replace(/\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g, "").trim();
+                            return cleaned || "sem endereço";
+                          })()}
                         </td>
                         <td className="p-2 text-xs">
                           {s.cityDetected || "—"}/{s.stateDetected || "—"}
@@ -182,36 +227,67 @@ function ConfirmedServicesPage() {
                           </Badge>
                         </td>
                         <td className="p-2">
-                          {s.serviceStatus ? (
-                            <Badge variant={
-                              s.serviceStatus === "AGENDADO" ? "default" :
-                              s.serviceStatus === "AGENDANDO" ? "secondary" :
-                              "outline"
-                            } className="text-[10px]">
-                              {s.serviceStatus}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">—</span>
-                          )}
+                          <Badge
+                            className={`text-[10px] ${
+                              s.serviceStatus === "AGENDADO" ? "bg-blue-600 hover:bg-blue-700" :
+                              s.serviceStatus === "AGENDAR" ? "bg-orange-500 hover:bg-orange-600" :
+                              s.serviceStatus === "AGENDANDO" ? "bg-black hover:bg-gray-900" :
+                              ""
+                            }`}
+                          >
+                            {s.serviceStatus || "—"}
+                          </Badge>
                         </td>
                         <td className="p-2">
-                          <div className="flex flex-col gap-1">
-                            {s.technicianOriginal && (
-                              <span className="text-xs text-muted-foreground">
-                                {s.technicianOriginal}
-                              </span>
-                            )}
-                            {t ? (
-                              <Badge variant="default">{t.firstName || t.nameOriginal}</Badge>
-                            ) : !s.technicianOriginal ? (
-                              <Link
-                                to="/distribuicao"
-                                search={{ serviceId: s.id }}
-                                className="text-xs text-primary hover:underline"
-                              >
-                                Atribuir
-                              </Link>
-                            ) : null}
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const tech = t || (cleanName ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim())) : null);
+                              const name = tech ? (tech.firstName || tech.nameOriginal) : cleanName;
+                              const phoneRaw = tech ? (tech.phoneNormalized || tech.phoneOriginal || "") : "";
+                              const phoneParts = phoneRaw ? phoneRaw.split("/").map(p => p.trim()).filter(Boolean) : [];
+                              const contacts: { name: string; digits: string }[] = [];
+                              for (const part of phoneParts) {
+                                const nameMatch = part.match(/\(([^)]+)\)/);
+                                const contactName = nameMatch ? nameMatch[1].trim().split(" ")[0] : "";
+                                const digits = part.replace(/\D/g, "");
+                                if (digits.length >= 8) {
+                                  contacts.push({ name: contactName, digits });
+                                }
+                              }
+                              if (!name) {
+                                return (
+                                  <Link
+                                    to="/distribuicao"
+                                    search={{ serviceId: s.id }}
+                                    className="text-xs text-primary hover:underline"
+                                  >
+                                    Atribuir
+                                  </Link>
+                                );
+                              }
+                              return (
+                                <>
+                                  <span className="text-xs font-medium">{name}</span>
+                                  <div className="flex flex-col gap-1">
+                                    {contacts.length > 0 ? contacts.map((c, i) => {
+                                      const url = buildWhatsAppUrl(c.digits, "");
+                                      return url ? (
+                                        <div key={i} className="flex items-center gap-1">
+                                          {c.name && <span className="text-[10px]">{c.name}</span>}
+                                          <a href={url} target="_blank" rel="noopener noreferrer">
+                                            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-6 w-6 p-0">
+                                              <MessageCircle className="w-3 h-3" />
+                                            </Button>
+                                          </a>
+                                        </div>
+                                      ) : null;
+                                    }) : (
+                                      <span className="text-destructive text-xs">sem telefone</span>
+                                    )}
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>

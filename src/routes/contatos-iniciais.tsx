@@ -292,13 +292,39 @@ function InitialContactsPage() {
                     return (
                       <tr key={c.id} className="border-t hover:bg-muted/30">
                         <td className="p-2">
-                          <div className="font-medium">{c.responsibleOriginal || "—"}</div>
-                          {(c.alternativeNames?.length ?? 0) > 0 && (
-                            <div className="text-xs text-amber-600 flex items-center gap-1 mt-0.5">
-                              <AlertTriangle className="w-3 h-3" />
-                              Também associado a: {c.alternativeNames!.join(", ")}
-                            </div>
-                          )}
+                          {(() => {
+                            const estaCom = c.responsibleOriginal?.match(/\(est[áa] com ((o|a) )?([a-zA-Zà-üÀ-Ü\s]+)\)/i);
+                            const cleanName = c.responsibleOriginal?.replace(/\s*\(est[áa] com ((o|a) )?[a-zA-Zà-üÀ-Ü\s]+\)/i, "").trim() || "—";
+                            const extraPhones = c.phoneOriginal ? [...c.phoneOriginal.matchAll(/\((\d[\d\s\-]*\d)\)/g)].map(m => m[1].trim()) : [];
+                            let extraPhone = extraPhones.length > 0 ? extraPhones[extraPhones.length - 1] : null;
+                            const extraName = estaCom ? estaCom[3].trim() : null;
+                            if (estaCom && !extraPhone) {
+                              const found = contacts.find((x) => x.responsibleOriginal?.toLowerCase().includes(extraName.toLowerCase()));
+                              if (found) extraPhone = found.phoneNormalized || found.allPhones?.[0] || found.phoneOriginal;
+                            }
+                            const extraUrl = extraPhone ? buildWhatsAppUrl(extraPhone, "") : null;
+                            return (
+                              <>
+                                <div className="font-medium">{cleanName}</div>
+                                {extraName && extraUrl && (
+                                  <div className="flex items-center gap-1 mt-0.5 text-xs">
+                                    <span className="text-muted-foreground">está com {estaCom[2] || ""}</span>
+                                    <a href={extraUrl} target="_blank" rel="noopener noreferrer">
+                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-6 px-2 text-[10px]">
+                                        {extraName}
+                                      </Button>
+                                    </a>
+                                  </div>
+                                )}
+                                {(c.alternativeNames?.length ?? 0) > 0 && (
+                                  <div className="text-xs text-amber-600 flex items-center gap-1 mt-0.5">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Também associado a: {c.alternativeNames!.join(", ")}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </td>
                         <td className="p-2">
                           {valid ? (
@@ -340,14 +366,14 @@ function InitialContactsPage() {
                           </div>
                         </td>
                         <td className="p-2">
-                          <div className="flex gap-1 justify-end flex-wrap">
+                          <div className="flex gap-1 justify-end">
                             <Button size="sm" variant="outline" onClick={() => openMessage(c)}>
                               Visualizar
                             </Button>
                             {valid ? (
                               <Button
                                 size="sm"
-                                variant="outline"
+                                className="bg-green-600 hover:bg-green-700 text-white"
                                 onClick={() => {
                                   const url = buildWhatsAppUrl(
                                     c.phoneNormalized!,

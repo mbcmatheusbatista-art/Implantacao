@@ -31,11 +31,11 @@ export function parseTechnicianQuantity(raw: string | number | null | undefined)
   if (/CONFIRMAR/.test(t)) {
     return { quantity: null, status: "CONFIRMAR" };
   }
-  const numMatch = cleanRaw.match(/(\d+)/);
-  if (numMatch) {
-    const n = parseInt(numMatch[1], 10);
-    if (n <= 0) return { quantity: 0, status: "SEM_MATERIAL" };
-    return { quantity: n, status: "DISPONIVEL" };
+  const numMatches = cleanRaw.match(/\d+/g);
+  if (numMatches) {
+    const total = numMatches.reduce((sum, n) => sum + parseInt(n, 10), 0);
+    if (total <= 0) return { quantity: 0, status: "SEM_MATERIAL" };
+    return { quantity: total, status: "DISPONIVEL" };
   }
   return { quantity: null, status: "TEXTO_NAO_INTERPRETADO" };
 }

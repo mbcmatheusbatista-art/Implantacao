@@ -11,12 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Upload, Wrench } from "lucide-react";
+import { MessageCircle, Upload, Wrench } from "lucide-react";
 import { useAppStore, getSessionLoads } from "@/stores/app-store";
 import { ImportDialog } from "@/components/import-dialog";
 import { buildTechnicians } from "@/services/build-records";
 import { formatPhoneForDisplay } from "@/utils/normalize-phone";
-import { stockStatusLabel } from "@/utils/parse-quantity";
+import { stockStatusLabel, stripQuantityFormat } from "@/utils/parse-quantity";
+import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import type { TechnicianStockStatus } from "@/types";
 
 export const Route = createFileRoute("/tecnicos")({
@@ -40,6 +41,13 @@ function statusVariant(
   }
 }
 
+const FORMAT_MARKER_RE = /\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g;
+
+function formatAddressField(raw: string): string {
+  const cleaned = raw.replace(FORMAT_MARKER_RE, "").trim();
+  return cleaned || "sem endereço";
+}
+
 function TechniciansPage() {
   const store = useAppStore();
   const techs = store.technicians;
@@ -48,6 +56,37 @@ function TechniciansPage() {
   const [filter, setFilter] = useState<Filter>("all");
 
   const loads = useMemo(() => getSessionLoads(store.assignments), [store.assignments]);
+
+  const doneCounts = useMemo(() => {
+    const m = new Map<string, { s8: number; g5: number }>();
+    const fmtRe = /\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g;
+    for (const svc of store.confirmedServices) {
+      const status = (svc.serviceStatus || svc.serviceStatusOriginal || "").toUpperCase();
+      if (status === "AGENDADO" || status === "FINALIZADO") {
+        let techName: string | null = null;
+        const a = store.assignments.find((x) => x.serviceId === svc.id);
+        if (a) {
+          const tech = store.technicians.find((x) => x.id === a.technicianId);
+          if (tech) techName = tech.nameOriginal.toLowerCase().trim();
+        } else if (svc.technicianOriginal) {
+          const raw = svc.technicianOriginal.replace(/\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g, "").trim().toLowerCase();
+          const tech = store.technicians.find((x) => raw.includes(x.nameOriginal.toLowerCase().trim()) || x.nameOriginal.toLowerCase().trim().includes(raw));
+          if (tech) techName = tech.nameOriginal.toLowerCase().trim();
+        }
+        if (techName) {
+          const current = m.get(techName) ?? { s8: 0, g5: 0 };
+          if (svc.equipmentNormalized === "S8_ECO") {
+            m.set(techName, { s8: current.s8 + 1, g5: current.g5 });
+          } else if (svc.equipmentNormalized === "S8_ECO_G5_PLUS") {
+            m.set(techName, { s8: current.s8 + 1, g5: current.g5 + 1 });
+          } else {
+            m.set(techName, { s8: current.s8 + 1, g5: current.g5 });
+          }
+        }
+      }
+    }
+    return m;
+  }, [store.confirmedServices, store.assignments, store.technicians]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase("pt-BR");
@@ -136,22 +175,35 @@ function TechniciansPage() {
                 <tbody>
                   {filtered.map((t) => {
                     const load = loads.get(t.id) ?? 0;
+                    const key = t.nameOriginal.replace(/\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g, "").trim().toLowerCase();
+                    const done = doneCounts.get(key) ?? { s8: 0, g5: 0 };
+                    const eq = t.equipmentBreakdown;
+                    const isG5 = eq && eq.g5PlusSets > 0;
+                    const used = isG5 ? done.g5 : done.s8;
                     const balance =
-                      t.availableQuantity !== null ? t.availableQuantity - load : null;
-                    return (
+                      t.availableQuantity !== null ? Math.max(0, t.availableQuantity - used) : null;
+                    return(
                       <tr key={t.id} className="border-t hover:bg-muted/30">
                         <td className="p-2">{t.nameOriginal || "—"}</td>
-                        <td className="p-2 text-xs">
-                          {t.phoneNormalized ? (
-                            formatPhoneForDisplay(t.phoneNormalized)
-                          ) : (
-                            <span className="text-destructive">{t.phoneOriginal || "—"}</span>
-                          )}
+                        <td className="p-2">
+                          {(() => {
+                            const phone = t.phoneNormalized || t.phoneOriginal;
+                            const url = phone ? buildWhatsAppUrl(phone, "") : null;
+                            return url ? (
+                              <a href={url} target="_blank" rel="noopener noreferrer">
+                                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                                  <MessageCircle className="w-4 h-4" />
+                                </Button>
+                              </a>
+                            ) : (
+                              <span className="text-destructive text-xs">—</span>
+                            );
+                          })()}
                         </td>
-                        <td className="p-2">{t.cityOriginal || "—"}</td>
-                        <td className="p-2">{t.state || "—"}</td>
+                        <td className="p-2">{t.cityOriginal ? formatAddressField(t.cityOriginal) : "—"}</td>
+                        <td className="p-2">{t.state ? formatAddressField(t.state) : "—"}</td>
                         <td className="p-2 text-xs" title={t.quantityOriginal}>
-                          {t.quantityOriginal || "—"}
+                          {t.quantityOriginal ? stripQuantityFormat(t.quantityOriginal) : "—"}
                         </td>
                         <td className="p-2">
                           <Badge variant={statusVariant(t.stockStatus)}>

@@ -355,6 +355,16 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
   const [clientFilterIds, setClientFilterIds] = useState<Set<string>>(new Set());
   const pendingFitBoundsRef = useRef<{ validIds: string[] } | null>(null);
   const searchAreaRef = useRef<HTMLDivElement>(null);
+  const [selectedTechId, setSelectedTechId] = useState<string | null>(null);
+  const selectedTechIdRef = useRef<string | null>(null);
+  const routeLinesRef = useRef<L.Polyline[]>([]);
+
+  useEffect(() => { selectedTechIdRef.current = selectedTechId; }, [selectedTechId]);
+
+  function removeRoute() {
+    for (const line of routeLinesRef.current) line.remove();
+    routeLinesRef.current = [];
+  }
 
   const visiblePoints = useMemo(() => {
     if (!clientSearchActive || clientFilterIds.size === 0) return points;
@@ -494,6 +504,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     layerGroup.clearLayers();
     techMarkersRef.current.clear();
     clientMarkersRef.current.clear();
+    removeRoute();
 
     const cityCount = new Map<string, number>();
 
@@ -613,16 +624,53 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
         }
         if (p.extra) tooltipHtml += `<br/>${p.extra}`;
       }
-      marker.bindTooltip(tooltipHtml, { direction: "top" });
+      marker.bindTooltip(tooltipHtml, { direction: "top", offset: [0, -20] });
       if (!isTech && p.service) {
         const popupHtml = buildPlatePopupHtml(p.service);
         marker.bindPopup(popupHtml, { maxWidth: 320, minWidth: 260 });
+        (marker as any).__popupHtml = popupHtml;
       }
       if (isTech && p.techId) {
         techMarkersRef.current.set(p.techId, marker);
+        marker.on("click", (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e.originalEvent);
+          const tid = p.techId!;
+          if (selectedTechIdRef.current === tid) {
+            setSelectedTechId(null);
+            removeRoute();
+          } else {
+            setSelectedTechId(tid);
+            removeRoute();
+          }
+        });
       }
       if (!isTech && p.clientId) {
         clientMarkersRef.current.set(p.clientId, marker);
+        marker.on("click", () => {
+          const techId = selectedTechIdRef.current;
+          if (techId) {
+            marker.closePopup();
+            const techMarker = techMarkersRef.current.get(techId);
+            if (techMarker) {
+              const from = techMarker.getLatLng();
+              const to = marker.getLatLng();
+              const url = `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}`;
+              window.open(url, "_blank");
+            }
+          }
+        });
+      }
+    }
+
+    // Apply selected tech highlight
+    for (const [, marker] of techMarkersRef.current) {
+      const el = marker.getElement();
+      if (el) {
+        if (selectedTechIdRef.current && marker === techMarkersRef.current.get(selectedTechIdRef.current)) {
+          el.classList.add("tech-selected");
+        } else {
+          el.classList.remove("tech-selected");
+        }
       }
     }
 
@@ -693,6 +741,20 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
       }
     }
   }, []);
+
+  // Click map background (not on a marker) to deselect tech
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    function onMapClick(e: L.LeafletMouseEvent) {
+      const target = e.originalEvent?.target as HTMLElement | null;
+      if (target?.closest?.(".leaflet-marker-icon")) return;
+      setSelectedTechId(null);
+      removeRoute();
+    }
+    map.on("click", onMapClick);
+    return () => map.off("click", onMapClick);
+  }, [mapReady]);
 
   // Refresh marker badges on zoom
   useEffect(() => {
@@ -987,6 +1049,23 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
         @keyframes client-pulse {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.2); }
+        }
+        .tech-selected .leaflet-marker-icon {
+          filter: drop-shadow(0 0 10px rgba(59, 130, 246, 1)) drop-shadow(0 0 20px rgba(59, 130, 246, 0.6)) !important;
+          transition: filter 0.2s ease;
+        }
+        .route-info-tooltip {
+          background: rgba(59, 130, 246, 0.95) !important;
+          color: white !important;
+          border: none !important;
+          border-radius: 6px !important;
+          padding: 4px 10px !important;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+        }
+        .route-info-tooltip .leaflet-tooltip-arrow {
+          border-top-color: rgba(59, 130, 246, 0.95) !important;
         }
       `}</style>
     </div>
