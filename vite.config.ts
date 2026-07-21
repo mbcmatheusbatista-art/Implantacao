@@ -16,7 +16,7 @@ export default defineConfig({
           {
             binding: "DB",
             database_name: "implantacao-creare-db",
-            database_id: "SUBSTITUA_PELO_ID_DO_BANCO_D1",
+            database_id: "2e3a239f-35b6-4e86-bae1-0be9d87cfe96",
           },
         ],
       },
