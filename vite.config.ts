@@ -7,9 +7,22 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  nitro: {
+    cloudflare: {
+      nodeCompat: true,
+      deployConfig: true,
+      wrangler: {
+        d1_databases: [
+          {
+            binding: "DB",
+            database_name: "implantacao-creare-db",
+            database_id: "SUBSTITUA_PELO_ID_DO_BANCO_D1",
+          },
+        ],
+      },
+    },
+  },
   tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
     server: { entry: "server" },
   },
 });

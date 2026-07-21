@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConfirmedService, Technician } from "@/types";
 import { brCityCoords } from "@/services/br-city-coords";
 import {
@@ -15,6 +15,7 @@ import { parsePeopleFromResponsibleText, type PersonInfo } from "@/utils/parse-r
 import { associatePhonesToPeople } from "@/utils/extract-phones";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { getGreetingByCurrentTime } from "@/utils/greeting";
+import { SEED_COORDS, SEED_ADDRESSES } from "@/services/seed-data";
 
 const STATE_REGION: Record<string, string> = {
   AC: "Norte",
@@ -70,6 +71,7 @@ interface Point {
   details: string;
   city: string;
   state: string;
+  address?: string;
   extra?: string;
   s8Eco?: number;
   g5Plus?: number;
@@ -228,7 +230,7 @@ function buildPlatePopupHtml(service: ConfirmedService): string {
   return html;
 }
 
-export const RoteirizacaoMap = memo(function RoteirizacaoMap({
+export function RoteirizacaoMap({
   technicians,
   clients,
   balances,
@@ -255,7 +257,16 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     const unresolvedT: string[] = [];
     const techCount = { total: technicians.length, resolved: 0 };
     for (const t of technicians) {
-      const coords = resolveCoords(t.cityOriginal || "", t.state || "");
+      const seedKey = t.firstName?.toLowerCase().trim();
+      const seedCoord = SEED_COORDS.get(seedKey || "");
+      let coords = seedCoord
+        ? seedCoord
+        : (t.addressLat != null && t.addressLng != null)
+          ? { lat: t.addressLat, lng: t.addressLng }
+          : resolveCoords(t.cityOriginal || "", t.state || "");
+      if (t.firstName?.toLowerCase().trim() === "marcos") {
+        coords = { lat: -23.5583744, lng: -46.4021487 };
+      }
       if (coords) {
         const bal = balances?.get(t.id);
         const extraLines: string[] = [];
@@ -287,6 +298,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
           details: `${t.cityOriginal || ""}/${t.state || ""}`,
           city: t.cityOriginal || "",
           state: t.state || "",
+          address: SEED_ADDRESSES.get(seedKey || "") || t.address,
           extra: extraLines.join("<br/>"),
           s8Eco: s8,
           g5Plus: g5,
@@ -506,17 +518,9 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
     clientMarkersRef.current.clear();
     removeRoute();
 
-    const cityCount = new Map<string, number>();
-
     for (const p of visiblePoints) {
-      const coordKey = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
-      const count = cityCount.get(coordKey) ?? 0;
-      cityCount.set(coordKey, count + 1);
-
-      const offsetLat = count * 0.008;
-      const offsetLng = count * 0.008;
-      const lat = p.lat + offsetLat;
-      const lng = p.lng + offsetLng;
+      const lat = p.lat;
+      const lng = p.lng;
 
       const isTech = p.type === "tech";
       const grad = isTech
@@ -612,7 +616,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
 
       let tooltipHtml: string;
       if (isTech) {
-        tooltipHtml = `<strong>${escapeHtml(p.label)}</strong><br/>${p.details}<br/><em>Técnico</em>${p.extra ? `<br/>${p.extra}` : ""}`;
+        tooltipHtml = `<strong>${escapeHtml(p.label)}</strong><br/>${p.details}${p.address ? `<br/>${escapeHtml(p.address)}` : ""}<br/><em>Técnico</em>${p.extra ? `<br/>${p.extra}` : ""}`;
       } else {
         const status = p.service?.serviceStatus || "";
         const statusColor = getStatusColor(status);
@@ -632,6 +636,7 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
       }
       if (isTech && p.techId) {
         techMarkersRef.current.set(p.techId, marker);
+        (marker as any).__techAddress = p.address;
         marker.on("click", (e: L.LeafletMouseEvent) => {
           L.DomEvent.stopPropagation(e.originalEvent);
           const tid = p.techId!;
@@ -653,8 +658,10 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
             const techMarker = techMarkersRef.current.get(techId);
             if (techMarker) {
               const from = techMarker.getLatLng();
+              const techAddr = (techMarker as any).__techAddress;
+              const origin = techAddr ? techAddr : `${from.lat},${from.lng}`;
               const to = marker.getLatLng();
-              const url = `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}`;
+              const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${to.lat},${to.lng}`;
               window.open(url, "_blank");
             }
           }
@@ -1070,4 +1077,4 @@ export const RoteirizacaoMap = memo(function RoteirizacaoMap({
       `}</style>
     </div>
   );
-});
+}

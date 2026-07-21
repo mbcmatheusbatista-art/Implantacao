@@ -77,6 +77,9 @@ export interface Technician {
   stockStatus: TechnicianStockStatus;
   equipmentBreakdown?: EquipmentBreakdown | null;
   validationIssues: string[];
+  address?: string;
+  addressLat?: number;
+  addressLng?: number;
 }
 
 export interface Assignment {

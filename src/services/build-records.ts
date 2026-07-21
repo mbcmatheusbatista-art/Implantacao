@@ -356,6 +356,7 @@ export function buildTechnicians(
     const cityRaw = getField(row, mapping, "city");
     const stateRaw = getField(row, mapping, "state");
     const qRaw = getField(row, mapping, "quantity");
+    const addressRaw = getField(row, mapping, "address");
     if (!nameRaw && !phoneRaw && !cityRaw) {
       skipped++;
       return;
@@ -389,6 +390,7 @@ export function buildTechnicians(
       stockStatus: qty.status,
       equipmentBreakdown: eqBreakdown,
       validationIssues: issues,
+      address: addressRaw || undefined,
     });
     imported++;
   });

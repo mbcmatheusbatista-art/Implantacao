@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesclar Endereços - Técnicos</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 20px; color: #333; }
+.container { max-width: 900px; margin: 0 auto; }
+h1 { margin-bottom: 4px; }
+.sub { color: #666; margin-bottom: 16px; font-size: 14px; }
+.stats { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.stat { background: #fff; border-radius: 8px; padding: 12px 20px; flex: 1; min-width: 120px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.stat .num { font-size: 28px; font-weight: 700; color: #2563eb; }
+.stat .label { font-size: 11px; color: #666; text-transform: uppercase; }
+.stat .num.green { color: #16a34a; }
+.stat .num.amber { color: #d97706; }
+.stat .num.red { color: #dc2626; }
+.actions { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+button { padding: 10px 24px; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: 600; }
+button.primary { background: #2563eb; color: white; }
+button.primary:hover { background: #1d4ed8; }
+button.primary:disabled { background: #93c5fd; cursor: not-allowed; }
+button.secondary { background: #e5e7eb; color: #333; }
+button.secondary:hover { background: #d1d5db; }
+button.danger { background: #dc2626; color: white; }
+button.danger:hover { background: #b91c1c; }
+.log { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 16px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.log .info { color: #89dceb; }
+.log .ok { color: #a6e3a1; }
+.log .warn { color: #f9e2af; }
+.log .err { color: #f38ba8; }
+.log .muted { color: #6c7086; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+th { background: #f9fafb; font-weight: 600; }
+tr:hover { background: #f3f4f6; }
+.match { color: #16a34a; font-weight: 600; }
+.no-match { color: #9ca3af; }
+.tabs { display: flex; gap: 2px; margin-bottom: 12px; }
+.tab { padding: 8px 16px; border: 1px solid #d1d5db; border-bottom: none; border-radius: 6px 6px 0 0; cursor: pointer; background: #f3f4f6; font-size: 13px; font-weight: 500; }
+.tab.active { background: #fff; border-bottom: 2px solid #2563eb; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Mesclar Endereços dos Técnicos</h1>
+  <p class="sub">Adiciona os endereços da lista fornecida aos técnicos já importados, fazendo a correspondência pelo nome.</p>
+
+  <div class="stats" id="statsDisplay">
+    <div class="stat"><div class="num" id="totalDb">—</div><div class="label">Técnicos no app</div></div>
+    <div class="stat"><div class="num" id="totalSeed">—</div><div class="label">Na lista de endereços</div></div>
+    <div class="stat"><div class="num green" id="matched">—</div><div class="label">Correspondências</div></div>
+    <div class="stat"><div class="num amber" id="noMatch">—</div><div class="label">Sem endereço na lista</div></div>
+    <div class="stat"><div class="num red" id="unmatched">—</div><div class="label">Endereços sem técnico</div></div>
+  </div>
+
+  <div class="actions">
+    <button id="btnCarregar" class="primary" onclick="carregarTudo()">1. Carregar dados</button>
+    <button id="btnMerge" class="primary" disabled onclick="merge()">2. Mesclar endereços</button>
+    <button class="secondary" onclick="window.location.href='/'">Ir para o App</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('preview')" id="tab-preview">Pré-visualização</div>
+    <div class="tab" onclick="switchTab('log')" id="tab-log">Log</div>
+  </div>
+
+  <div class="tab-content active" id="content-preview">
+    <div id="previewArea"><p style="color: #9ca3af; font-size: 14px;">Clique em "Carregar dados" para ver a pré-visualização.</p></div>
+  </div>
+
+  <div class="tab-content" id="content-log">
+    <div class="log" id="log">Aguardando...</div>
+  </div>
+</div>
+
+<script>
+const JSON_URL = '/seed-tecnicos.json';
+const DB_NAME = 'creare-app';
+const STORE_NAME = 'appData';
+
+let existingTechs = [];
+let seedData = [];
+let mergeResult = [];
+
+function log(level, msg) {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString('pt-BR');
+  const cls = { info: 'info', ok: 'ok', warn: 'warn', err: 'err' }[level] || 'muted';
+  el.innerHTML += `\n<span class="${cls}">[${ts}] [${level.toUpperCase()}] ${escapeHtml(msg)}</span>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'kind' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function loadIndexedDB() {
+  const db = await openDb();
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  const store = tx.objectStore(STORE_NAME);
+  return new Promise((resolve, reject) => {
+    const req = store.get('technicians');
+    req.onsuccess = () => { resolve(req.result?.data || []); db.close(); };
+    req.onerror = () => { reject(req.error); db.close(); };
+  });
+}
+
+async function saveIndexedDB(technicians) {
+  const db = await openDb();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  await new Promise((resolve, reject) => {
+    const req = store.put({
+      kind: 'technicians',
+      data: technicians,
+      updatedAt: new Date().toISOString(),
+    });
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+  tx.commit();
+  db.close();
+}
+
+function normalizeName(n) {
+  return (n || '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function matchByName(name, seedEntries) {
+  const norm = normalizeName(name);
+  // Exact match first
+  const exact = seedEntries.find(s => normalizeName(s.nome) === norm);
+  if (exact) return exact;
+  // Partial: seed nome is contained in tech name or vice versa
+  return seedEntries.find(s => {
+    const sn = normalizeName(s.nome);
+    return norm.includes(sn) || sn.includes(norm);
+  });
+}
+
+async function carregarTudo() {
+  document.getElementById('btnCarregar').disabled = true;
+  document.getElementById('btnCarregar').textContent = 'Carregando...';
+  log('info', 'Carregando dados do IndexedDB e da lista de endereços...');
+
+  try {
+    existingTechs = await loadIndexedDB();
+    log('ok', `IndexedDB: ${existingTechs.length} técnicos encontrados`);
+  } catch (err) {
+    log('err', `IndexedDB: erro ao ler - ${err.message}`);
+    existingTechs = [];
+  }
+
+  try {
+    const res = await fetch(JSON_URL);
+    seedData = await res.json();
+    log('ok', `Lista de endereços: ${seedData.length} entradas`);
+  } catch (err) {
+    log('err', `Lista de endereços: erro ao carregar - ${err.message}`);
+    seedData = [];
+  }
+
+  // Compute matches
+  const seedWithAddr = seedData.filter(s => s.endereco || (s.cidade && s.uf));
+  mergeResult = existingTechs.map(tech => {
+    const match = matchByName(tech.nameOriginal, seedWithAddr);
+    return {
+      tech,
+      match,
+      hasMatch: !!match,
+      address: match?.endereco || '',
+      cidade: match?.cidade || tech.cityOriginal || '',
+      uf: match?.uf || tech.state || '',
+    };
+  });
+
+  const matched = mergeResult.filter(r => r.hasMatch).length;
+  const noMatch = mergeResult.filter(r => !r.hasMatch).length;
+  const unmatched = seedWithAddr.length - matched;
+
+  document.getElementById('totalDb').textContent = existingTechs.length;
+  document.getElementById('totalSeed').textContent = seedWithAddr.length;
+  document.getElementById('matched').textContent = matched;
+  document.getElementById('noMatch').textContent = noMatch;
+  document.getElementById('unmatched').textContent = Math.max(0, unmatched);
+
+  document.getElementById('btnMerge').disabled = matched === 0;
+  if (matched === 0) {
+    log('warn', 'Nenhuma correspondência encontrada. Verifique se os nomes dos técnicos conferem.');
+  } else {
+    log('ok', `${matched} correspondências encontradas. Clique em "Mesclar endereços".`);
+  }
+
+  renderPreview();
+  document.getElementById('btnCarregar').textContent = '✓ Carregado';
+  setTimeout(() => {
+    document.getElementById('btnCarregar').disabled = false;
+    document.getElementById('btnCarregar').textContent = '1. Carregar dados';
+  }, 3000);
+}
+
+function renderPreview() {
+  const area = document.getElementById('previewArea');
+  if (mergeResult.length === 0) {
+    area.innerHTML = '<p style="color: #9ca3af; font-size: 14px;">Nenhum dado carregado.</p>';
+    return;
+  }
+
+  let html = `<table><thead><tr>
+    <th>Nome</th><th>Cidade</th><th>UF</th><th>Endereço atual</th><th>Endereço novo</th><th>Status</th>
+  </tr></thead><tbody>`;
+
+  for (const r of mergeResult) {
+    const status = r.hasMatch
+      ? '<span class="match">✓ Vai receber endereço</span>'
+      : '<span class="no-match">— Sem endereço</span>';
+    const newAddr = r.hasMatch ? (r.address || r.cidade + ', ' + r.uf) : '—';
+    html += `<tr>
+      <td>${escapeHtml(r.tech.nameOriginal || '')}</td>
+      <td>${escapeHtml(r.tech.cityOriginal || '')}</td>
+      <td>${escapeHtml(r.tech.state || '')}</td>
+      <td>${escapeHtml(r.tech.address || '—')}</td>
+      <td>${escapeHtml(newAddr)}</td>
+      <td>${status}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  area.innerHTML = html;
+}
+
+async function merge() {
+  document.getElementById('btnMerge').disabled = true;
+  document.getElementById('btnMerge').textContent = 'Mesclando...';
+  log('info', 'Iniciando mesclagem de endereços...');
+
+  const updated = existingTechs.map(tech => {
+    const r = mergeResult.find(x => x.tech.id === tech.id);
+    if (r && r.hasMatch) {
+      return {
+        ...tech,
+        address: r.address || tech.address,
+        cityOriginal: r.cidade || tech.cityOriginal,
+        cityNormalized: (r.cidade || tech.cityOriginal || '').trim(),
+        state: (r.uf || tech.state || '').trim().toUpperCase(),
+      };
+    }
+    return tech;
+  });
+
+  // Save to IndexedDB
+  try {
+    await saveIndexedDB(updated);
+    log('ok', `IndexedDB: ${updated.length} técnicos salvos (${mergeResult.filter(r => r.hasMatch).length} com endereço atualizado)`);
+  } catch (err) {
+    log('err', `IndexedDB: erro ao salvar - ${err.message}`);
+    document.getElementById('btnMerge').disabled = false;
+    document.getElementById('btnMerge').textContent = '2. Mesclar endereços';
+    return;
+  }
+
+  // Try D1 API
+  const d1Payload = updated
+    .filter(t => t.address)
+    .map(t => ({
+      nome: t.nameOriginal,
+      telefone: t.phoneNormalized || t.phoneOriginal || '',
+      endereco: t.address || '',
+      numero: '',
+      bairro: '',
+      cidade: t.cityOriginal || '',
+      uf: t.state || '',
+      cep: '',
+      latitude: undefined,
+      longitude: undefined,
+      equipamentos: t.quantityOriginal || '',
+    }));
+
+  if (d1Payload.length > 0) {
+    try {
+      const res = await fetch('/api/tecnicos/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(d1Payload),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        log('ok', `D1 API: ${result.inseridos} inseridos, ${result.atualizados} atualizados`);
+      } else {
+        const text = await res.text().catch(() => '');
+        log('warn', `D1 API: HTTP ${res.status} (esperado em dev local)`);
+      }
+    } catch (err) {
+      log('warn', `D1 API: servidor indisponível (esperado em dev local)`);
+    }
+  }
+
+  log('ok', 'Mesclagem concluída! Recarregue o app para ver os endereços no mapa.');
+  document.getElementById('btnMerge').textContent = '✓ Concluído';
+  renderPreview();
+  setTimeout(() => {
+    document.getElementById('btnMerge').textContent = '2. Mesclar endereços';
+    document.getElementById('btnMerge').disabled = false;
+  }, 4000);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('content-' + name).classList.add('active');
+}
+</script>
+</body>
+</html>

@@ -173,6 +173,456 @@ async function handleRouteDistance(request: Request, env: unknown): Promise<Resp
   }
 }
 
+// ---------------------------------------------------------------------------
+// D1 CRUD — tecnicos
+// ---------------------------------------------------------------------------
+
+interface D1Result<T> {
+  results: T[];
+  success: boolean;
+  error?: string;
+}
+
+interface D1PreparedStatement {
+  bind(...params: unknown[]): D1PreparedStatement;
+  all<T = Record<string, unknown>>(): Promise<D1Result<T>>;
+  run(): Promise<{ success: boolean; error?: string; meta?: unknown }>;
+}
+
+interface D1Database {
+  prepare(sql: string): D1PreparedStatement;
+  exec(sql: string): Promise<{ success: boolean; error?: string }>;
+}
+
+function getDB(env: unknown): D1Database | null {
+  const e = env as Record<string, unknown>;
+  if (e && typeof e === "object" && "DB" in e) {
+    return e.DB as D1Database;
+  }
+  return null;
+}
+
+async function ensureTecnicosTable(db: D1Database): Promise<void> {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS tecnicos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL,
+      telefone TEXT DEFAULT '',
+      endereco TEXT NOT NULL DEFAULT '',
+      numero TEXT DEFAULT '',
+      bairro TEXT DEFAULT '',
+      cidade TEXT DEFAULT '',
+      uf TEXT DEFAULT '',
+      cep TEXT DEFAULT '',
+      latitude REAL,
+      longitude REAL,
+      equipamentos TEXT DEFAULT '',
+      ativo INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(nome, telefone)
+    )
+  `);
+}
+
+function normalizeNomeTelefone(val: string): string {
+  return val.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+interface TecnicoBody {
+  nome?: string;
+  telefone?: string;
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+  cep?: string;
+  latitude?: number;
+  longitude?: number;
+  equipamentos?: string;
+  ativo?: number;
+}
+
+interface ImportRow {
+  nome: string;
+  telefone?: string;
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+  cep?: string;
+  latitude?: number;
+  longitude?: number;
+  equipamentos?: string;
+}
+
+function sanitizeString(val: unknown, maxLen = 500): string {
+  if (typeof val !== "string") return "";
+  return val.slice(0, maxLen);
+}
+
+function sanitizeFloat(val: unknown): number | null {
+  if (typeof val === "number" && Number.isFinite(val)) return val;
+  if (typeof val === "string") {
+    const n = parseFloat(val);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function sanitizeInt(val: unknown): number | null {
+  if (typeof val === "number" && Number.isInteger(val)) return val;
+  if (typeof val === "string") {
+    const n = parseInt(val, 10);
+    return Number.isInteger(n) ? n : null;
+  }
+  return null;
+}
+
+function validateTecnico(body: TecnicoBody, partial = false): string | null {
+  if (!partial) {
+    if (!body.nome || typeof body.nome !== "string" || !body.nome.trim()) {
+      return "nome é obrigatório";
+    }
+    if (!body.endereco || typeof body.endereco !== "string" || !body.endereco.trim()) {
+      return "endereco é obrigatório";
+    }
+  } else {
+    if (body.nome !== undefined && (!body.nome || typeof body.nome !== "string" || !body.nome.trim())) {
+      return "nome inválido";
+    }
+    if (body.endereco !== undefined && (!body.endereco || typeof body.endereco !== "string" || !body.endereco.trim())) {
+      return "endereco inválido";
+    }
+  }
+  if (body.telefone !== undefined && typeof body.telefone !== "string") return "telefone inválido";
+  if (body.cidade !== undefined && typeof body.cidade !== "string") return "cidade inválida";
+  if (body.uf !== undefined && typeof body.uf !== "string") return "uf inválido";
+  if (body.cep !== undefined && typeof body.cep !== "string") return "cep inválido";
+  if (body.latitude !== undefined) {
+    const lat = sanitizeFloat(body.latitude);
+    if (lat === null || lat < -90 || lat > 90) return "latitude inválida";
+  }
+  if (body.longitude !== undefined) {
+    const lng = sanitizeFloat(body.longitude);
+    if (lng === null || lng < -180 || lng > 180) return "longitude inválida";
+  }
+  return null;
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+async function handleListTecnicos(env: unknown): Promise<Response> {
+  const db = getDB(env);
+  if (!db) return json({ error: "D1 não disponível" }, 503);
+  try {
+    await ensureTecnicosTable(db);
+    const result = await db.prepare(
+      "SELECT * FROM tecnicos WHERE ativo = 1 ORDER BY nome",
+    ).all<Record<string, unknown>>();
+    return json({ tecnicos: result.results });
+  } catch (err) {
+    console.error("[D1] list error", err);
+    return json({ error: "Erro ao listar técnicos" }, 500);
+  }
+}
+
+async function handleCreateTecnico(request: Request, env: unknown): Promise<Response> {
+  let body: TecnicoBody;
+  try {
+    body = (await request.json()) as TecnicoBody;
+  } catch {
+    return json({ error: "JSON inválido" }, 400);
+  }
+  const err = validateTecnico(body);
+  if (err) return json({ error: err }, 400);
+
+  const db = getDB(env);
+  if (!db) return json({ error: "D1 não disponível" }, 503);
+  try {
+    await ensureTecnicosTable(db);
+    const nome = normalizeNomeTelefone(sanitizeString(body.nome, 300));
+    const telefone = sanitizeString(body.telefone, 50);
+    const endereco = sanitizeString(body.endereco, 500);
+    const numero = sanitizeString(body.numero, 30);
+    const bairro = sanitizeString(body.bairro, 200);
+    const cidade = sanitizeString(body.cidade, 200);
+    const uf = sanitizeString(body.uf, 2);
+    const cep = sanitizeString(body.cep, 10);
+    const equipamentos = sanitizeString(body.equipamentos, 500);
+    let latitude = sanitizeFloat(body.latitude);
+    let longitude = sanitizeFloat(body.longitude);
+
+    // Geocode address if no coordinates provided
+    if ((latitude === null || longitude === null) && endereco) {
+      const geoQuery = `${endereco}, ${cidade}, ${uf}, Brasil`
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/,$/, "");
+      const coord = await geocodeAddress(geoQuery);
+      if (coord) {
+        latitude = coord.lat;
+        longitude = coord.lng;
+      }
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO tecnicos (nome, telefone, endereco, numero, bairro, cidade, uf, cep, latitude, longitude, equipamentos)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(nome, telefone) DO UPDATE SET
+        endereco = excluded.endereco,
+        numero = excluded.numero,
+        bairro = excluded.bairro,
+        cidade = excluded.cidade,
+        uf = excluded.uf,
+        cep = excluded.cep,
+        latitude = excluded.latitude,
+        longitude = excluded.longitude,
+        equipamentos = excluded.equipamentos,
+        updated_at = datetime('now')
+    `).bind(nome, telefone, endereco, numero, bairro, cidade, uf, cep, latitude, longitude, equipamentos);
+    const result = await stmt.run();
+    if (!result.success) return json({ error: "Erro ao criar técnico" }, 500);
+
+    const list = await db.prepare(
+      "SELECT * FROM tecnicos WHERE id = last_insert_rowid()",
+    ).all<Record<string, unknown>>();
+    return json({ tecnico: list.results[0] ?? null }, 201);
+  } catch (err) {
+    console.error("[D1] create error", err);
+    return json({ error: "Erro ao criar técnico" }, 500);
+  }
+}
+
+async function handleUpdateTecnico(request: Request, env: unknown): Promise<Response> {
+  const url = new URL(request.url);
+  const idStr = url.pathname.split("/").pop() || "";
+  const id = sanitizeInt(idStr);
+  if (id === null) return json({ error: "id inválido" }, 400);
+
+  let body: TecnicoBody;
+  try {
+    body = (await request.json()) as TecnicoBody;
+  } catch {
+    return json({ error: "JSON inválido" }, 400);
+  }
+  const err = validateTecnico(body, true);
+  if (err) return json({ error: err }, 400);
+
+  const db = getDB(env);
+  if (!db) return json({ error: "D1 não disponível" }, 503);
+  try {
+    await ensureTecnicosTable(db);
+
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    const setValue = (field: string, val: unknown) => {
+      if (val !== undefined) {
+        updates.push(`${field} = ?`);
+        params.push(val);
+      }
+    };
+    setValue("nome", body.nome !== undefined ? sanitizeString(body.nome, 300) : undefined);
+    setValue("telefone", body.telefone !== undefined ? sanitizeString(body.telefone, 50) : undefined);
+    setValue("endereco", body.endereco !== undefined ? sanitizeString(body.endereco, 500) : undefined);
+    setValue("cidade", body.cidade !== undefined ? sanitizeString(body.cidade, 200) : undefined);
+    setValue("uf", body.uf !== undefined ? sanitizeString(body.uf, 2) : undefined);
+    setValue("cep", body.cep !== undefined ? sanitizeString(body.cep, 10) : undefined);
+    setValue("latitude", body.latitude !== undefined ? sanitizeFloat(body.latitude) : undefined);
+    setValue("longitude", body.longitude !== undefined ? sanitizeFloat(body.longitude) : undefined);
+    setValue("ativo", body.ativo !== undefined ? sanitizeInt(body.ativo) : undefined);
+
+    if (updates.length === 0) return json({ error: "Nenhum campo para atualizar" }, 400);
+
+    updates.push("updated_at = datetime('now')");
+    const sql = `UPDATE tecnicos SET ${updates.join(", ")} WHERE id = ? AND ativo = 1`;
+    const stmt = db.prepare(sql).bind(...params, id);
+    const result = await stmt.run();
+    if (!result.success) return json({ error: "Erro ao atualizar técnico" }, 500);
+
+    const list = await db.prepare("SELECT * FROM tecnicos WHERE id = ?").bind(id).all<Record<string, unknown>>();
+    return json({ tecnico: list.results[0] ?? null });
+  } catch (err) {
+    console.error("[D1] update error", err);
+    return json({ error: "Erro ao atualizar técnico" }, 500);
+  }
+}
+
+async function handleImportTecnicos(request: Request, env: unknown): Promise<Response> {
+  let rows: ImportRow[];
+  try {
+    rows = (await request.json()) as ImportRow[];
+  } catch {
+    return json({ error: "JSON inválido" }, 400);
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return json({ error: "Envie um array com pelo menos um técnico" }, 400);
+  }
+
+  const db = getDB(env);
+  if (!db) return json({ error: "D1 não disponível" }, 503);
+
+  try {
+    await ensureTecnicosTable(db);
+  } catch (err) {
+    console.error("[D1] ensure table error", err);
+    return json({ error: "Erro ao criar tabela" }, 500);
+  }
+
+  // Pre-validate all rows
+  type Prepared = {
+    nome: string;
+    telefone: string;
+    endereco: string;
+    numero: string;
+    bairro: string;
+    cidade: string;
+    ufStr: string;
+    cep: string;
+    equipStr: string;
+    latitude: number | null;
+    longitude: number | null;
+    identificador: string;
+  };
+  const valid: Prepared[] = [];
+  const erros: string[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const idx = i + 1;
+
+    if (!row.nome || typeof row.nome !== "string" || !row.nome.trim()) {
+      erros.push(`Linha ${idx}: nome é obrigatório`);
+      continue;
+    }
+
+    const nome = normalizeNomeTelefone(sanitizeString(row.nome, 300));
+    const telefone = sanitizeString(row.telefone, 50);
+    const identificador = `${nome} / ${telefone || "(sem telefone)"}`;
+
+    let latitude = sanitizeFloat(row.latitude);
+    let longitude = sanitizeFloat(row.longitude);
+
+    // Geocode address via Nominatim if no coordinates provided
+    if ((latitude === null || longitude === null) && row.endereco && typeof row.endereco === "string" && row.endereco.trim()) {
+      const geoQuery = `${row.endereco}, ${row.cidade || ""}, ${row.uf || ""}, Brasil`
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/,$/, "");
+      const coord = await geocodeAddress(geoQuery);
+      if (coord) {
+        latitude = coord.lat;
+        longitude = coord.lng;
+      }
+    }
+
+    valid.push({
+      nome,
+      telefone,
+      endereco: sanitizeString(row.endereco, 500),
+      numero: sanitizeString(row.numero, 30),
+      bairro: sanitizeString(row.bairro, 200),
+      cidade: sanitizeString(row.cidade, 200),
+      ufStr: sanitizeString(row.uf, 2),
+      cep: sanitizeString(row.cep, 10),
+      equipStr: sanitizeString(row.equipamentos, 500),
+      latitude,
+      longitude,
+      identificador,
+    });
+  }
+
+  if (valid.length === 0) {
+    return json({ inseridos: 0, atualizados: 0, ignorados: 0, erros });
+  }
+
+  // Execute all operations inside a single transaction
+  let inseridos = 0;
+  let atualizados = 0;
+  let ignorados = 0;
+
+  try {
+    await db.exec("BEGIN TRANSACTION");
+
+    for (const p of valid) {
+      const existing = await db.prepare(
+        "SELECT id, endereco, numero, bairro, cidade, uf, cep, latitude, longitude, equipamentos FROM tecnicos WHERE nome = ? AND telefone = ?",
+      ).bind(p.nome, p.telefone).all<Record<string, unknown>>();
+
+      if (existing.results.length > 0) {
+        const cur = existing.results[0];
+        const same =
+          (cur.endereco ?? "") === p.endereco &&
+          (cur.numero ?? "") === p.numero &&
+          (cur.bairro ?? "") === p.bairro &&
+          (cur.cidade ?? "") === p.cidade &&
+          (cur.uf ?? "") === p.ufStr &&
+          (cur.cep ?? "") === p.cep &&
+          (cur.latitude ?? null) === p.latitude &&
+          (cur.longitude ?? null) === p.longitude &&
+          (cur.equipamentos ?? "") === p.equipStr;
+
+        if (same) {
+          ignorados++;
+        } else {
+          await db.prepare(`
+            UPDATE tecnicos SET
+              endereco = ?, numero = ?, bairro = ?, cidade = ?, uf = ?, cep = ?,
+              latitude = ?, longitude = ?, equipamentos = ?, updated_at = datetime('now')
+            WHERE id = ?
+          `).bind(p.endereco, p.numero, p.bairro, p.cidade, p.ufStr, p.cep, p.latitude, p.longitude, p.equipStr, cur.id).run();
+          atualizados++;
+        }
+      } else {
+        await db.prepare(`
+          INSERT INTO tecnicos (nome, telefone, endereco, numero, bairro, cidade, uf, cep, latitude, longitude, equipamentos)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(p.nome, p.telefone, p.endereco, p.numero, p.bairro, p.cidade, p.ufStr, p.cep, p.latitude, p.longitude, p.equipStr).run();
+        inseridos++;
+      }
+    }
+
+    await db.exec("COMMIT");
+  } catch (err) {
+    await db.exec("ROLLBACK");
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[D1] import transaction error", msg);
+    erros.push(`Erro na transação: ${msg}. Nenhum registro foi salvo.`);
+    return json({ inseridos: 0, atualizados: 0, ignorados: 0, erros });
+  }
+
+  return json({ inseridos, atualizados, ignorados, erros });
+}
+
+async function handleDeleteTecnico(request: Request, env: unknown): Promise<Response> {
+  const url = new URL(request.url);
+  const idStr = url.pathname.split("/").pop() || "";
+  const id = sanitizeInt(idStr);
+  if (id === null) return json({ error: "id inválido" }, 400);
+
+  const db = getDB(env);
+  if (!db) return json({ error: "D1 não disponível" }, 503);
+  try {
+    await ensureTecnicosTable(db);
+    const stmt = db.prepare(
+      "UPDATE tecnicos SET ativo = 0, updated_at = datetime('now') WHERE id = ?",
+    ).bind(id);
+    const result = await stmt.run();
+    if (!result.success) return json({ error: "Erro ao desativar técnico" }, 500);
+    return json({ success: true });
+  } catch (err) {
+    console.error("[D1] delete error", err);
+    return json({ error: "Erro ao desativar técnico" }, 500);
+  }
+}
+
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
 async function getServerEntry(): Promise<ServerEntry> {
@@ -216,6 +666,25 @@ export default {
       const url = new URL(request.url);
       if (request.method === "POST" && url.pathname === "/api/route-distance") {
         return await handleRouteDistance(request, env);
+      }
+
+      // D1 tecnicos CRUD
+      if (url.pathname === "/api/tecnicos" || url.pathname.startsWith("/api/tecnicos/")) {
+        if (request.method === "POST" && url.pathname === "/api/tecnicos/import") {
+          return await handleImportTecnicos(request, env);
+        }
+        if (request.method === "GET" && url.pathname === "/api/tecnicos") {
+          return await handleListTecnicos(env);
+        }
+        if (request.method === "POST" && url.pathname === "/api/tecnicos") {
+          return await handleCreateTecnico(request, env);
+        }
+        if (request.method === "PUT" && url.pathname.startsWith("/api/tecnicos/")) {
+          return await handleUpdateTecnico(request, env);
+        }
+        if (request.method === "DELETE" && url.pathname.startsWith("/api/tecnicos/")) {
+          return await handleDeleteTecnico(request, env);
+        }
       }
 
       const handler = await getServerEntry();

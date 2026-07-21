@@ -10,6 +10,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
 import { hydrateFromDb } from "@/stores/app-store";
+import { useSyncD1Tecnicos } from "@/services/use-d1-tecnicos";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -131,6 +132,8 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   useEffect(() => { hydrateFromDb(); }, []);
+
+  useSyncD1Tecnicos();
 
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>

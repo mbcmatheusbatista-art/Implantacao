@@ -194,6 +194,35 @@ export function haversineMeters(
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/**
+ * Geocode a full street address via Nominatim (street-level).
+ * Bypasses brCityCoords for true street-level coordinates.
+ */
+let lastNominatimCallFull = 0;
+export async function geocodeFullAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const now = Date.now();
+  const elapsed = now - lastNominatimCallFull;
+  if (elapsed < 1100) {
+    await new Promise((r) => setTimeout(r, 1100 - elapsed));
+  }
+  lastNominatimCallFull = Date.now();
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(address)}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)",
+        "Accept-Language": "pt-BR",
+      },
+    });
+    if (!res.ok) return null;
+    const arr = (await res.json()) as { lat: string; lon: string }[];
+    if (!arr[0]) return null;
+    return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+  } catch {
+    return null;
+  }
+}
+
 function formatDistance(meters: number): string {
   if (meters < 1000) return `${meters} m`;
   return `${Math.round(meters / 1000)} km`;

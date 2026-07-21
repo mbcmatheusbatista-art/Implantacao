@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useAppStore, getSessionLoads } from "@/stores/app-store";
+import { ImportDialog } from "@/components/import-dialog";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,14 +13,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageCircle, Upload, Wrench } from "lucide-react";
-import { useAppStore, getSessionLoads } from "@/stores/app-store";
-import { ImportDialog } from "@/components/import-dialog";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  Loader2,
+  Phone,
+  Search,
+  Upload,
+  User,
+  X,
+} from "lucide-react";
 import { buildTechnicians } from "@/services/build-records";
-import { formatPhoneForDisplay } from "@/utils/normalize-phone";
 import { stockStatusLabel, stripQuantityFormat } from "@/utils/parse-quantity";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
-import type { TechnicianStockStatus } from "@/types";
+import { importarTecnicosEmLote } from "@/services/api";
+import { applySeedAddresses } from "@/services/seed-data";
+import { geocodeFullAddress } from "@/services/distance";
+import type { Technician, TechnicianStockStatus } from "@/types";
 
 export const Route = createFileRoute("/tecnicos")({
   component: TechniciansPage,
@@ -88,11 +100,15 @@ function TechniciansPage() {
     return m;
   }, [store.confirmedServices, store.assignments, store.technicians]);
 
+  const d1Active = useMemo(() => techs.some((t) => !!t.address), [techs]);
+  const techsComEndereco = useMemo(() => techs.filter((t) => !!t.address), [techs]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase("pt-BR");
     return techs.filter((t) => {
       if (q) {
-        const hay = [t.nameOriginal, t.cityOriginal, t.state, t.phoneOriginal]
+        const hay = [t.nameOriginal, t.cityOriginal, t.state, t.phoneOriginal, t.address]
+          .filter(Boolean)
           .join(" ")
           .toLocaleLowerCase("pt-BR");
         if (!hay.includes(q)) return false;
@@ -121,12 +137,35 @@ function TechniciansPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {techs.length} contatos aos técnicos importados.
+            {techsComEndereco.length > 0 && (
+              <span className="ml-2 text-green-600">
+                · {techsComEndereco.length} com endereço real
+              </span>
+            )}
           </p>
         </div>
         <Button onClick={() => setOpen(true)}>
           <Upload className="w-4 h-4 mr-2" /> Importar
         </Button>
       </div>
+
+      {d1Active && (
+        <Card className="border-green-200 bg-green-50/30 dark:bg-green-950/10 dark:border-green-900">
+          <CardContent className="py-3 flex items-center gap-2 text-green-700 dark:text-green-400 text-sm">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Endereços carregados do servidor ({techsComEndereco.length} técnicos com endereço real, {techs.length - techsComEndereco.length} com localização aproximada por cidade).
+          </CardContent>
+        </Card>
+      )}
+
+      {techs.length > 0 && !d1Active && (
+        <Card className="border-amber-200 bg-amber-50/30 dark:bg-amber-950/10 dark:border-amber-900">
+          <CardContent className="py-3 flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            Servidor de endereços indisponível. Cadastre endereços na importação para ativar a localização real no mapa.
+          </CardContent>
+        </Card>
+      )}
 
       {techs.length === 0 ? (
         <Card>
@@ -138,7 +177,7 @@ function TechniciansPage() {
         <Card>
           <CardHeader className="flex-row gap-2 flex-wrap space-y-0 items-center">
             <Input
-              placeholder="Buscar por nome, cidade, UF, telefone"
+              placeholder="Buscar por nome, cidade, UF, telefone, endereço"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-sm"
@@ -166,6 +205,7 @@ function TechniciansPage() {
                     <th className="p-2">Celular</th>
                     <th className="p-2">Cidade</th>
                     <th className="p-2">UF</th>
+                    <th className="p-2">Endereço</th>
                     <th className="p-2">Quantidade</th>
                     <th className="p-2">Status</th>
                     <th className="p-2">Sessão</th>
@@ -202,6 +242,13 @@ function TechniciansPage() {
                         </td>
                         <td className="p-2">{t.cityOriginal ? formatAddressField(t.cityOriginal) : "—"}</td>
                         <td className="p-2">{t.state ? formatAddressField(t.state) : "—"}</td>
+                        <td className="p-2 max-w-48 truncate text-xs" title={t.address || ""}>
+                          {t.address ? (
+                            <span className="text-green-700 dark:text-green-400">{t.address}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="p-2 text-xs" title={t.quantityOriginal}>
                           {t.quantityOriginal ? stripQuantityFormat(t.quantityOriginal) : "—"}
                         </td>
@@ -235,13 +282,85 @@ function TechniciansPage() {
         onOpenChange={setOpen}
         kind="technicians"
         title="Importar contatos aos técnicos"
-        onConfirm={(rows, mapping, fileName, headerRow, sheetName) => {
+        onConfirm={async (rows, mapping, fileName, headerRow, sheetName) => {
           const { records, diagnostic } = buildTechnicians(rows, mapping, headerRow);
+
+          const marcosBefore = records.filter((r) => r.firstName.toLowerCase() === "marcos");
+          console.log("[MARCOS] Antes do seed:", marcosBefore.map((m) => ({
+            name: m.nameOriginal,
+            firstName: m.firstName,
+            address: m.address,
+            addressLat: m.addressLat,
+            addressLng: m.addressLng,
+          })));
+
+          const enriched = applySeedAddresses(records);
+
+          const marcosAfter = enriched.filter((r) => r.firstName.toLowerCase() === "marcos");
+          console.log("[MARCOS] Depois do seed:", marcosAfter.map((m) => ({
+            name: m.nameOriginal,
+            address: m.address,
+            addressLat: m.addressLat,
+            addressLng: m.addressLng,
+          })));
           store.setTechnicians(
-            records,
-            { fileName, count: records.length },
+            enriched,
+            { fileName, count: enriched.length },
             { ...diagnostic, fileName, sheetName, timestamp: Date.now() },
           );
+
+          let finalRecords = enriched;
+          const toGeocode = enriched.filter(
+            (t) => t.address && t.addressLat == null && t.addressLng == null,
+          );
+          console.log(`[GEO] Geocodificando ${toGeocode.length} endereços...`);
+          if (toGeocode.length > 0) {
+            const updated: Technician[] = [];
+            for (const tech of toGeocode) {
+              const result = await geocodeFullAddress(tech.address!);
+              if (result) {
+                console.log(`[GEO] OK: ${tech.firstName} → ${result.lat},${result.lng}`);
+                updated.push({
+                  ...tech,
+                  addressLat: result.lat,
+                  addressLng: result.lng,
+                });
+              } else {
+                console.warn(`[GEO] Falhou: ${tech.firstName} (${tech.address})`);
+                updated.push(tech);
+              }
+            }
+            if (updated.length > 0) {
+              finalRecords = enriched.map(
+                (t) => updated.find((u) => u.id === t.id) || t,
+              );
+              store.setTechnicians(
+                finalRecords,
+                { fileName, count: finalRecords.length },
+                { ...diagnostic, fileName, sheetName, timestamp: Date.now() },
+              );
+            }
+          }
+
+          try {
+            const payload = finalRecords.map((r) => ({
+              nome: r.nameOriginal,
+              telefone: r.phoneNormalized || r.phoneOriginal || "",
+              endereco: r.address || "",
+              numero: "",
+              bairro: "",
+              cidade: r.cityOriginal || "",
+              uf: r.state || "",
+              cep: "",
+              latitude: r.addressLat ?? undefined,
+              longitude: r.addressLng ?? undefined,
+              equipamentos: r.quantityOriginal || "",
+            }));
+            const result = await importarTecnicosEmLote(payload);
+            console.log("[D1] Importação concluída", result);
+          } catch (err) {
+            console.warn("[D1] Erro ao importar técnicos no servidor", err);
+          }
         }}
       />
     </div>
