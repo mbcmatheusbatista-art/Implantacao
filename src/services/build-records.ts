@@ -7,7 +7,7 @@ import type {
 } from "@/types";
 import { normalizeBrazilianPhone } from "@/utils/normalize-phone";
 import { extractFirstName } from "@/utils/extract-first-name";
-import { normalizePlate } from "@/utils/normalize-text";
+import { normalizePlate, stripFormatMarkers } from "@/utils/normalize-text";
 import { normalizeEquipment } from "@/utils/normalize-equipment";
 import { extractCityAndStateFromAddress } from "@/utils/extract-location";
 import { parseTechnicianQuantity, stripQuantityFormat } from "@/utils/parse-quantity";
@@ -255,7 +255,7 @@ export function buildConfirmedServices(
     const addressRaw = getField(row, mapping, "address");
     const equipmentRaw = getField(row, mapping, "equipment");
     const technicianRaw = getField(row, mapping, "technician");
-    const statusRaw = getField(row, mapping, "status");
+    const statusRaw = stripFormatMarkers(getField(row, mapping, "status").trim());
     const dataHoraRaw = getField(row, mapping, "dataHora");
     const observationsRaw = getField(row, mapping, "observations");
     if (!plateRaw && !respRaw && !phoneRaw && !addressRaw) {
@@ -292,6 +292,7 @@ export function buildConfirmedServices(
     if (statusNorm === "AGENDADO") serviceStatus = "AGENDADO";
     else if (statusNorm === "AGENDANDO") serviceStatus = "AGENDANDO";
     else if (statusNorm.startsWith("AGENDAR")) serviceStatus = "AGENDAR";
+    else if (statusNorm === "FINALIZADO") serviceStatus = "FINALIZADO";
 
     records.push({
       id: uid(),

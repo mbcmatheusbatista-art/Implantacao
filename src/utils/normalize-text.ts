@@ -19,3 +19,10 @@ export function cleanString(input: string | number | null | undefined): string {
 export function normalizePlate(input: string | number | null | undefined): string {
   return cleanString(input).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
+
+const FORMAT_MARKER_RE = /\u200BFORMAT:\w+\u200B/g;
+
+export function stripFormatMarkers(input: string | number | null | undefined): string {
+  if (input === null || input === undefined) return "";
+  return String(input).replace(FORMAT_MARKER_RE, "");
+}

@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, Users, ClipboardCheck, Wrench, Share2, Settings, Navigation2, Calendar, ClipboardList } from "lucide-react";
+import { Home, Users, ClipboardCheck, Wrench, Share2, Settings, Navigation2, Calendar, ClipboardList, ListTodo } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +19,7 @@ const items = [
   { title: "Contatar aos técnicos", url: "/tecnicos", icon: Wrench },
   { title: "Distribuição de atendimentos", url: "/distribuicao", icon: Share2 },
   { title: "Roteirização por técnico", url: "/roteirizacao", icon: Navigation2 },
+  { title: "Tarefas", url: "/tarefas", icon: ListTodo },
   { title: "Solicitações Adm Rogério / Fernando", url: "/solicitacoes", icon: ClipboardList },
   { title: "Configurações de mensagens", url: "/configuracoes", icon: Settings },
 ];

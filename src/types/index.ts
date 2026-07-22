@@ -25,7 +25,7 @@ export interface InitialContact {
 
 export type EquipmentType = "S8_ECO" | "S8_ECO_G5_PLUS" | "NAO_IDENTIFICADO";
 
-export type ServiceStatus = "AGENDAR" | "AGENDANDO" | "AGENDADO" | "";
+export type ServiceStatus = "AGENDAR" | "AGENDANDO" | "AGENDADO" | "FINALIZADO" | "";
 
 export interface EquipmentBreakdown {
   s8EcoSets: number;

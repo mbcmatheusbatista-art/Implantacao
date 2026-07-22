@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TecnicosRouteImport } from './routes/tecnicos'
+import { Route as TarefasRouteImport } from './routes/tarefas'
 import { Route as SolicitacoesRouteImport } from './routes/solicitacoes'
 import { Route as RoteirizacaoRouteImport } from './routes/roteirizacao'
 import { Route as DistribuicaoRouteImport } from './routes/distribuicao'
@@ -23,6 +24,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const TecnicosRoute = TecnicosRouteImport.update({
   id: '/tecnicos',
   path: '/tecnicos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TarefasRoute = TarefasRouteImport.update({
+  id: '/tarefas',
+  path: '/tarefas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SolicitacoesRoute = SolicitacoesRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/distribuicao': typeof DistribuicaoRoute
   '/roteirizacao': typeof RoteirizacaoRoute
   '/solicitacoes': typeof SolicitacoesRoute
+  '/tarefas': typeof TarefasRoute
   '/tecnicos': typeof TecnicosRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/distribuicao': typeof DistribuicaoRoute
   '/roteirizacao': typeof RoteirizacaoRoute
   '/solicitacoes': typeof SolicitacoesRoute
+  '/tarefas': typeof TarefasRoute
   '/tecnicos': typeof TecnicosRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/distribuicao': typeof DistribuicaoRoute
   '/roteirizacao': typeof RoteirizacaoRoute
   '/solicitacoes': typeof SolicitacoesRoute
+  '/tarefas': typeof TarefasRoute
   '/tecnicos': typeof TecnicosRoute
 }
 export interface FileRouteTypes {
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/distribuicao'
     | '/roteirizacao'
     | '/solicitacoes'
+    | '/tarefas'
     | '/tecnicos'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/distribuicao'
     | '/roteirizacao'
     | '/solicitacoes'
+    | '/tarefas'
     | '/tecnicos'
   id:
     | '__root__'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/distribuicao'
     | '/roteirizacao'
     | '/solicitacoes'
+    | '/tarefas'
     | '/tecnicos'
   fileRoutesById: FileRoutesById
 }
@@ -157,6 +169,7 @@ export interface RootRouteChildren {
   DistribuicaoRoute: typeof DistribuicaoRoute
   RoteirizacaoRoute: typeof RoteirizacaoRoute
   SolicitacoesRoute: typeof SolicitacoesRoute
+  TarefasRoute: typeof TarefasRoute
   TecnicosRoute: typeof TecnicosRoute
 }
 
@@ -167,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/tecnicos'
       fullPath: '/tecnicos'
       preLoaderRoute: typeof TecnicosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tarefas': {
+      id: '/tarefas'
+      path: '/tarefas'
+      fullPath: '/tarefas'
+      preLoaderRoute: typeof TarefasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/solicitacoes': {
@@ -245,6 +265,7 @@ const rootRouteChildren: RootRouteChildren = {
   DistribuicaoRoute: DistribuicaoRoute,
   RoteirizacaoRoute: RoteirizacaoRoute,
   SolicitacoesRoute: SolicitacoesRoute,
+  TarefasRoute: TarefasRoute,
   TecnicosRoute: TecnicosRoute,
 }
 export const routeTree = rootRouteImport

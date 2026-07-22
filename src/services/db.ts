@@ -12,7 +12,9 @@ type DataKind =
   | "assignments"
   | "contactedIds"
   | "diagnostics"
-  | "meta";
+  | "meta"
+  | "checklist"
+  | "plateMeta";
 
 interface ImportMeta {
   fileName: string;

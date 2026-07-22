@@ -60,6 +60,7 @@ interface Props {
     fileName: string,
     headerRow: number,
     sheetName?: string,
+    fullRows?: Record<string, string>[],
   ) => void;
 }
 
@@ -235,7 +236,7 @@ export function ImportDialog({
       count: confirmedRows.length,
       rowsPreview: confirmedRows.slice(0, 20),
     });
-    onConfirm(confirmedRows, mapping, fileName, headerRow, selectedSheet || undefined);
+    onConfirm(confirmedRows, mapping, fileName, headerRow, selectedSheet || undefined, dataObjects);
     onOpenChange(false);
     resetState();
     toast.success("Importação concluída.");

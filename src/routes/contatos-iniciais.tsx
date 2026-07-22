@@ -18,6 +18,9 @@ import { ImportDialog } from "@/components/import-dialog";
 import { MessageDialog } from "@/components/message-dialog";
 import { buildInitialContacts } from "@/services/build-records";
 import { detectInitialContactUpdates } from "@/services/initial-contact-updates";
+import { savePlateMeta } from "@/services/plate-meta";
+import { matchFieldForHeader } from "@/services/column-detection";
+import { normalizePlate, stripFormatMarkers } from "@/utils/normalize-text";
 import { formatPhoneForDisplay } from "@/utils/normalize-phone";
 import { buildResponsibleMessage } from "@/services/messages";
 import { buildWhatsAppUrl, copyToClipboard, openWhatsAppInReusableTab } from "@/utils/whatsapp-url";
@@ -453,7 +456,7 @@ function InitialContactsPage() {
         onOpenChange={setImportOpen}
         kind="initial"
         title="Importar contato com cliente"
-        onConfirm={(rows, mapping, fileName, headerRow, sheetName) => {
+        onConfirm={(rows, mapping, fileName, headerRow, sheetName, fullRows) => {
           debugContatos("confirm:start", {
             fileName,
             sheetName,
@@ -476,6 +479,38 @@ function InitialContactsPage() {
             { fileName, count: records.length },
             { ...diagnostic, fileName, sheetName, timestamp: Date.now() },
           );
+          {
+            const sourceRows = fullRows ?? rows;
+            const allCols = sourceRows.length > 0 ? Object.keys(sourceRows[0]) : [];
+            console.log("[CONTATOS] plateMeta extraction start", { fullRowsProvided: !!fullRows, rowsKeys: rows.length > 0 ? Object.keys(rows[0]) : [], sourceRowsKeys: allCols, rowsLen: rows.length, sourceRowsLen: sourceRows.length });
+            let addressCol: string | undefined;
+            let statusCol: string | undefined;
+            for (const col of allCols) {
+              const f = matchFieldForHeader(col);
+              if (f === "address" && !addressCol) { addressCol = col; console.log("[CONTATOS] address column found:", col); }
+              if (f === "status" && !statusCol) { statusCol = col; console.log("[CONTATOS] status column found:", col); }
+            }
+            const plateCol = mapping.plate;
+            console.log("[CONTATOS] columns resolved", { plateCol, addressCol, statusCol, canExtract: !!(plateCol && (addressCol || statusCol)) });
+            if (plateCol && (addressCol || statusCol)) {
+              const plateMeta: Record<string, { address: string; status: string }> = {};
+              for (const row of sourceRows) {
+                const plate = normalizePlate(row[plateCol] ?? "");
+                if (!plate) continue;
+                const addr = addressCol ? (row[addressCol] ?? "") : "";
+                const stat = statusCol ? stripFormatMarkers(row[statusCol] ?? "").trim() : "";
+                if (addr || stat) {
+                  plateMeta[plate] = { address: addr, status: stat };
+                }
+              }
+              console.log("[CONTATOS] plateMeta built", { count: Object.keys(plateMeta).length, sample: JSON.stringify(Object.fromEntries(Object.entries(plateMeta).slice(0, 3))) });
+              if (Object.keys(plateMeta).length > 0) {
+                savePlateMeta(plateMeta).catch(() => {});
+              }
+            } else {
+              console.log("[CONTATOS] plateMeta NOT extracted - condition false");
+            }
+          }
           if (updates.length > 0) {
             toast.success(`${updates.length} contato(s) atualizado(s).`, {
               description: updates
