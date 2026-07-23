@@ -45,7 +45,6 @@ function getTechnicianOrigin(technician: Technician): string {
 }
 
 export function getServiceDestination(service: ConfirmedService): string {
-  // geocode uses extractCity → brCityCoords, so city+state is ideal; fall back to full address
   if (service.cityDetected) {
     return cleanAddress([service.cityDetected, service.stateDetected].filter(Boolean).join(", "));
   }
@@ -59,8 +58,8 @@ function getCacheKey(technician: Technician, service: ConfirmedService): string 
 }
 
 export function buildGoogleMapsRouteUrl(technician: Technician, service: ConfirmedService): string {
-  const origin = getTechnicianOrigin(technician);
-  const destination = getServiceDestination(service);
+  const origin = technician.address || cleanAddress([technician.cityOriginal, technician.state].filter(Boolean).join(", "));
+  const destination = service.fullAddress || cleanAddress([service.cityDetected, service.stateDetected].filter(Boolean).join(", "));
   const url = new URL("https://www.google.com/maps/dir/");
   url.searchParams.set("api", "1");
   url.searchParams.set("travelmode", "driving");
@@ -91,7 +90,30 @@ export function extractCity(query: string): string {
   cleaned = cleaned.replace(/\s+[A-Z0-9]{5,}$/i, " ");
   cleaned = cleaned.replace(/\s+/g, " ").trim();
   // Find state abbreviation (2 uppercase letters) at the end
-  const stateMatch = cleaned.match(/([A-Z]{2})$/);
+  let stateMatch = cleaned.match(/([A-Z]{2})$/);
+  if (!stateMatch) {
+    const lower = cleaned
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("pt-BR");
+    const knownStates: [string, string][] = [
+      ["acre", "ac"], ["alagoas", "al"], ["amapa", "ap"], ["amazonas", "am"],
+      ["bahia", "ba"], ["ceara", "ce"], ["distrito federal", "df"], ["espirito santo", "es"],
+      ["goias", "go"], ["maranhao", "ma"], ["mato grosso", "mt"], ["mato grosso do sul", "ms"],
+      ["minas gerais", "mg"], ["para", "pa"], ["paraiba", "pb"], ["parana", "pr"],
+      ["pernambuco", "pe"], ["piaui", "pi"], ["rio de janeiro", "rj"],
+      ["rio grande do norte", "rn"], ["rio grande do sul", "rs"], ["rondonia", "ro"],
+      ["roraima", "rr"], ["santa catarina", "sc"], ["sao paulo", "sp"],
+      ["sergipe", "se"], ["tocantins", "to"],
+    ];
+    for (const [name, uf] of knownStates) {
+      if (lower.endsWith(name)) {
+        cleaned = cleaned.slice(0, -name.length).trim();
+        stateMatch = [uf, uf];
+        break;
+      }
+    }
+  }
   if (!stateMatch) return normalize(cleaned.toLocaleLowerCase("pt-BR"));
   const state = stateMatch[1].toLocaleLowerCase("pt-BR");
   // Remove the state suffix (" - SP", ", SP", "/SP", " SP") from the end
@@ -138,14 +160,10 @@ const STATE_CAPITAL: Record<string, string> = {
 
 async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
   const lookupKey = extractCity(query);
-
-  // Try static map first
   const staticCoords = brCityCoords[lookupKey];
   if (staticCoords) {
-    console.log("[DISTANCE] Coord do mapa estático", { query, lookupKey });
     return staticCoords;
   }
-  console.warn("[DISTANCE] Cidade não encontrada no mapa estático, tentando Nominatim", { query, lookupKey });
 
   // Fallback to Nominatim with rate limiting (1 req/s)
   const now = Date.now();
@@ -157,12 +175,16 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
 
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, {
+      signal: controller.signal,
       headers: {
         "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)",
         "Accept-Language": "pt-BR",
       },
     });
+    clearTimeout(timer);
     if (!res.ok) return null;
     const arr = (await res.json()) as { lat: string; lon: string }[];
     if (!arr[0]) return null;
@@ -172,7 +194,6 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
     const parts = lookupKey.split(", ");
     const stateKey = parts[parts.length - 1]?.toLowerCase();
     if (stateKey && STATE_CAPITAL[stateKey]) {
-      console.warn("[DISTANCE] Usando capital do estado como fallback", { lookupKey, stateKey });
       return brCityCoords[STATE_CAPITAL[stateKey]] ?? null;
     }
     return null;
@@ -245,33 +266,21 @@ export async function calculateApproximateRoute(
   technician: Technician,
   service: ConfirmedService,
 ): Promise<RouteDistance | null> {
-  console.log("[DISTANCE] calculateApproximateRoute chamado", { techId: technician.id });
   const origin = getTechnicianOrigin(technician);
   const destination = getServiceDestination(service);
-  console.log("[DISTANCE] Endereços", { origin, destination });
-  if (!origin || !destination) {
-    console.warn("[DISTANCE] Endereço vazio", { origin, destination });
-    return null;
-  }
+  if (!origin || !destination) return null;
 
   const cacheKey = getCacheKey(technician, service);
-  console.log("[DISTANCE] cacheKey", { cacheKey });
   const cache = loadCache<RouteDistance | null>(APPROX_CACHE_KEY);
-  if (cacheKey in cache) {
-    console.log("[DISTANCE] Cache hit", { cacheKey, value: cache[cacheKey] });
-    return cache[cacheKey];
-  }
+  if (cacheKey in cache) return cache[cacheKey];
 
   try {
     const [o, d] = await Promise.all([geocodeAddress(origin), geocodeAddress(destination)]);
-    console.log("[DISTANCE] Geocode results", { o, d, techId: technician.id });
-    if (!o || !d) {
-      console.warn("[DISTANCE] Geocode falhou", { origin, dest: destination, o, d, techId: technician.id });
-      cache[cacheKey] = null;
-      saveCache(APPROX_CACHE_KEY, cache);
-      return null;
+    if (!o || !d) return null;
+    let straight = haversineMeters(o, d);
+    if (straight < 100 && technician.address && service.fullAddress) {
+      straight = 5000;
     }
-    const straight = haversineMeters(o, d);
     const meters = Math.round(straight * 1.3);
     const seconds = Math.round((meters / 1000 / 75) * 3600);
     const result: RouteDistance = {
@@ -279,12 +288,10 @@ export async function calculateApproximateRoute(
       distanceText: `~${formatDistance(meters)}`,
       durationText: `~${formatDuration(seconds)}`,
     };
-    console.log("[DISTANCE] Rota calculada", { techId: technician.id, distanceText: result.distanceText });
     cache[cacheKey] = result;
     saveCache(APPROX_CACHE_KEY, cache);
     return result;
-  } catch (error) {
-    console.warn("[DISTANCE] Erro rota aproximada", { origin, destination, error });
+  } catch {
     cache[cacheKey] = null;
     saveCache(APPROX_CACHE_KEY, cache);
     return null;

@@ -91,6 +91,7 @@ function DistributionPage() {
   const [loadingRoutes, setLoadingRoutes] = useState(false);
   const [matrizFilter, setMatrizFilter] = useState<"all" | "none" | Set<string>>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [clientSearchQuery, setClientSearchQuery] = useState("");
   const routesCache = useRef<Record<string, Record<string, { distance: RouteDistance | null; mode: RouteMode }>>>({});
 
   // Reset routes on service switch; the main effect restores from cache or recalculates
@@ -184,11 +185,16 @@ function DistributionPage() {
       for (const t of techsToCalc) initial[t.id] = { distance: null, mode: "approximate" };
       if (!cancelled) setRoutes(initial);
 
-      const settled = await Promise.allSettled(
-        techsToCalc.map((tech) =>
-          calculateApproximateRoute(tech, svc).then((dist) => ({ techId: tech.id, distance: dist }))
+      const settled = await Promise.race([
+        Promise.allSettled(
+          techsToCalc.map((tech) =>
+            calculateApproximateRoute(tech, svc).then((dist) => ({ techId: tech.id, distance: dist }))
+          ),
         ),
-      );
+        new Promise<PromiseSettledResult<{ techId: string; distance: RouteDistance | null }>[]>((resolve) =>
+          setTimeout(() => resolve([] as any), 15000)
+        ),
+      ]);
 
       if (!cancelled) {
         const next: Record<string, { distance: RouteDistance | null; mode: RouteMode }> = {};
@@ -214,9 +220,8 @@ function DistributionPage() {
     const far: ScoredTechnician[] = [];
     for (const s of scored) {
       const route = routes[s.technician.id];
-      if (route?.distance && route.distance.distanceMeters <= MAX_ROUTE_METERS) {
-        within.push(s);
-      } else if (route?.distance && route.distance.distanceMeters > MAX_ROUTE_METERS) {
+      const isSameUf = s.category === "mesma_uf" || s.category === "recomendados";
+      if (route?.distance && route.distance.distanceMeters > MAX_ROUTE_METERS && !isSameUf) {
         far.push(s);
       } else {
         within.push(s);
@@ -315,6 +320,11 @@ function DistributionPage() {
             <Badge variant="outline" className="text-[10px]">
               {t.cityOriginal || "—"}/{t.state || "—"}
             </Badge>
+            {t.address && (
+              <span className="text-[10px] text-muted-foreground truncate max-w-[200px]" title={t.address}>
+                {t.address}
+              </span>
+            )}
             <Badge
               variant={
                 t.stockStatus === "DISPONIVEL"
@@ -503,6 +513,13 @@ function DistributionPage() {
                   </label>
                 )}
               </div>
+              <Input
+                type="text"
+                placeholder="Pesquisar por condutor ou placa..."
+                value={clientSearchQuery}
+                onChange={(e) => setClientSearchQuery(e.target.value)}
+                className="h-8 text-xs mt-2"
+              />
             </div>
             </CardHeader>
             <CardContent className="p-0 max-h-[70vh] overflow-y-auto">
@@ -517,6 +534,14 @@ function DistributionPage() {
                     if (matrizFilter === "none") return false;
                     const m = s.matrizOriginal || "__sem_matriz__";
                     return matrizFilter.has(m);
+                  })
+                  .filter((s) => {
+                    if (!clientSearchQuery.trim()) return true;
+                    const q = clientSearchQuery.trim().toLowerCase();
+                    const name = (s.responsibleOriginal || "").toLowerCase();
+                    const plate = (s.plateOriginal || "").toLowerCase();
+                    const addr = (s.fullAddress || "").toLowerCase();
+                    return name.includes(q) || plate.includes(q) || addr.includes(q);
                   })
                   .map((s) => {
                   const a = store.assignments.find((x) => x.serviceId === s.id);

@@ -47,7 +47,7 @@ const SEED_ENTRIES: [string, string, string, number?, number?][] = [
   ["ricardo m. da rocha", "ricardo", "Alameda Denilson de Paula, nº 69, Buritis, Uberlândia - MG, CEP 38410-008"],
   ["kléber", "kléber", "Avenida dos Autonomistas, nº 5578, Km 18, Osasco - SP, CEP 06194-060", -23.5258233, -46.8010115],
   ["michael crespo", "michael", "Avenida Doutor Newton Guaraná, nº 185, Parque Penha, Campos dos Goytacazes - RJ, CEP 28021-245", -21.7921946, -41.2912929],
-  ["vinicius araújo", "vinicius", "10ª Rua Caju, nº 1157, Casa, Caju, Nova Santa Rita - RS, CEP 92480-000", -29.8356793, -51.2607519],
+  ["vinicius araújo", "vinicius", "R. Caju, 1157, Nova Santa Rita - RS, 92480-000", -29.8356793, -51.2607519],
   ["washiton", "washiton", "Rua México, nº 33, Areinha, Viana - ES, CEP 29137-037", -20.3740159, -40.4219893],
 ];
 

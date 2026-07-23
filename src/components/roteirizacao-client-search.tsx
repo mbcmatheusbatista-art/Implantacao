@@ -163,17 +163,14 @@ export function ClientSearch({ clients, onSelectVehicle, onFilterPerson, onClear
       setShowVehicleList(false);
       setSelectedIndex(0);
       const allIds = group.records.map((r) => r.id);
-      const validIds = group.records.filter((r) => hasValidAddress(r)).map((r) => r.id);
-      onFilterPerson(group.displayName, allIds, validIds);
+      onFilterPerson(group.displayName, allIds, allIds);
     },
     [onFilterPerson],
   );
 
   const handleVehicleClick = useCallback(
     (vehicle: VehicleInfo) => {
-      if (vehicle.hasAddress) {
-        onSelectVehicle(vehicle.service);
-      }
+      onSelectVehicle(vehicle.service);
     },
     [onSelectVehicle],
   );

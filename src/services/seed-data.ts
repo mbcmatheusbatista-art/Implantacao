@@ -34,7 +34,7 @@ const SEED: { firstName: string; address: string; lat?: number; lng?: number }[]
   { firstName: "ricardo", address: "Alameda Denilson de Paula, nº 69, Buritis, Uberlândia - MG, CEP 38410-008" },
   { firstName: "kléber", address: "Avenida dos Autonomistas, nº 5578, Km 18, Osasco - SP, CEP 06194-060", lat: -23.5258233, lng: -46.8010115 },
   { firstName: "michael", address: "Avenida Doutor Newton Guaraná, nº 185, Parque Penha, Campos dos Goytacazes - RJ, CEP 28021-245", lat: -21.7921946, lng: -41.2912929 },
-  { firstName: "vinicius", address: "R. Caju, 534, Nova Santa Rita - RS, 92480-000", lat: -29.8356793, lng: -51.2607519 },
+  { firstName: "vinicius", address: "R. Caju, 1157, Nova Santa Rita - RS, 92480-000", lat: -29.8356793, lng: -51.2607519 },
   { firstName: "washiton", address: "Rua México, nº 33, Areinha, Viana - ES, CEP 29137-037", lat: -20.3740159, lng: -40.4219893 },
   { firstName: "helber", address: "R. João Angelieri, 150, Porto Feliz - SP, 18540-000" },
   { firstName: "jacson", address: "Av. Augusto de Campos, 351 - Jardim das Estacoes (Vila Xavier), Araraquara - SP, 14810-349" },

@@ -16,6 +16,7 @@ import { associatePhonesToPeople } from "@/utils/extract-phones";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { getGreetingByCurrentTime } from "@/utils/greeting";
 import { SEED_COORDS, SEED_ADDRESSES } from "@/services/seed-data";
+import { normalizeText, stripFormatMarkers } from "@/utils/normalize-text";
 
 const STATE_REGION: Record<string, string> = {
   AC: "Norte",
@@ -291,9 +292,11 @@ export function RoteirizacaoMap({
         }
         const s8 = bal?.inventory.s8Eco ?? 0;
         const g5 = bal?.inventory.g5Plus ?? 0;
+        const nameWords = stripFormatMarkers(t.nameOriginal || t.firstName || "").split(" ").filter(Boolean);
+        const shortName = nameWords.slice(0, 2).join(" ");
         pts.push({
           ...coords,
-          label: t.firstName || t.nameOriginal,
+          label: shortName || t.firstName || t.nameOriginal,
           type: "tech",
           details: `${t.cityOriginal || ""}/${t.state || ""}`,
           city: t.cityOriginal || "",
@@ -365,11 +368,32 @@ export function RoteirizacaoMap({
   const [renderTick, setRenderTick] = useState(0);
   const [clientSearchActive, setClientSearchActive] = useState(false);
   const [clientFilterIds, setClientFilterIds] = useState<Set<string>>(new Set());
-  const pendingFitBoundsRef = useRef<{ validIds: string[] } | null>(null);
+  const pendingZoomRef = useRef<{ latlngs: { lat: number; lng: number }[] } | null>(null);
   const searchAreaRef = useRef<HTMLDivElement>(null);
   const [selectedTechId, setSelectedTechId] = useState<string | null>(null);
   const selectedTechIdRef = useRef<string | null>(null);
   const routeLinesRef = useRef<L.Polyline[]>([]);
+  const [techDestAddr, setTechDestAddr] = useState("");
+  const techDestInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedTech = useMemo(
+    () => technicians.find((t) => t.id === selectedTechId) || null,
+    [technicians, selectedTechId],
+  );
+
+  function handleTechRoute() {
+    if (!selectedTech || !techDestAddr.trim()) return;
+    const origin =
+      selectedTech.address ||
+      (selectedTech.addressLat && selectedTech.addressLng
+        ? `${selectedTech.addressLat},${selectedTech.addressLng}`
+        : "");
+    if (!origin) return;
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(techDestAddr.trim())}`;
+    window.open(url, "_blank");
+    setSelectedTechId(null);
+    setTechDestAddr("");
+  }
 
   useEffect(() => { selectedTechIdRef.current = selectedTechId; }, [selectedTechId]);
 
@@ -445,10 +469,10 @@ export function RoteirizacaoMap({
     };
   }, [ready]);
 
-  // Force marker re-apply whenever technicians, clients, or filter state change
+  // Force marker re-apply whenever data changes
   useEffect(() => {
     setRenderTick((t) => t + 1);
-  }, [technicians, clients, clientSearchActive, clientFilterIds]);
+  }, [technicians, clients]);
 
   // Load Brazilian states GeoJSON for border rendering
   useEffect(() => {
@@ -606,11 +630,10 @@ export function RoteirizacaoMap({
 
       const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
 
-      if (!isTech && p.service?.serviceStatus) {
-        const s = p.service.serviceStatus;
-        const sColor = getStatusColor(s);
-        if (sColor) {
-          (marker as any).__clientStatus = { text: s, color: sColor };
+      if (!isTech && p.service?.serviceStatusOriginal) {
+        const origNorm = normalizeText(p.service.serviceStatusOriginal).trim();
+        if (origNorm === "AGENDAR") {
+          (marker as any).__clientStatus = { text: "AGENDAR", color: "#f97316" };
         }
       }
 
@@ -694,36 +717,21 @@ export function RoteirizacaoMap({
 
     map.invalidateSize();
 
-    // Fit bounds to all points (respecting current filter)
-    if (visiblePoints.length > 0) {
-      const bounds = L.latLngBounds(visiblePoints.map((p) => [p.lat, p.lng]));
-      map.fitBounds(bounds, { padding: [50, 50] });
-    }
-
     updateStatusBadges(map);
 
-    // Handle pending fitBounds/flyTo from client person selection
-    if (pendingFitBoundsRef.current) {
-      const { validIds } = pendingFitBoundsRef.current;
-      pendingFitBoundsRef.current = null;
-      const validLatLngs: L.LatLng[] = [];
-      for (const id of validIds) {
-        const marker = clientMarkersRef.current.get(id);
-        if (marker) {
-          validLatLngs.push(marker.getLatLng());
-          const el = marker.getElement();
-          if (el) {
-            el.classList.add("client-marker-highlight");
-            setTimeout(() => el.classList.remove("client-marker-highlight"), 3000);
-          }
-        }
-      }
-      if (validLatLngs.length === 1) {
-        map.flyTo(validLatLngs[0], 14, { duration: 1 });
-      } else if (validLatLngs.length > 1) {
-        const bounds = L.latLngBounds(validLatLngs);
+    // Handle pending zoom from client person selection
+    if (pendingZoomRef.current) {
+      const { latlngs } = pendingZoomRef.current;
+      pendingZoomRef.current = null;
+      if (latlngs.length === 1) {
+        map.flyTo([latlngs[0].lat, latlngs[0].lng], 14, { duration: 1 });
+      } else if (latlngs.length > 1) {
+        const bounds = L.latLngBounds(latlngs.map((p) => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
       }
+    } else if (visiblePoints.length > 0) {
+      const bounds = L.latLngBounds(visiblePoints.map((p) => [p.lat, p.lng]));
+      map.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [visiblePoints, mapReady, renderTick]);
 
@@ -846,36 +854,57 @@ export function RoteirizacaoMap({
     const map = mapInstanceRef.current;
     const marker = clientMarkersRef.current.get(service.id);
     const L = leafletRef.current;
-    if (!map || !L || !marker) return;
+    if (!map || !L) return;
 
-    const hasAddr = (service.fullAddress || "").trim().toLowerCase();
-    const invalidAddr = !hasAddr || hasAddr === "-" || hasAddr === "não informado" || hasAddr === "nao informado" || hasAddr === "sem endereço" || hasAddr === "sem endereco";
+    if (marker) {
+      const hasAddr = (service.fullAddress || "").trim().toLowerCase();
+      const invalidAddr = !hasAddr || hasAddr === "-" || hasAddr === "não informado" || hasAddr === "nao informado" || hasAddr === "sem endereço" || hasAddr === "sem endereco";
 
-    if (invalidAddr) return;
+      if (!invalidAddr) {
+        const popupHtml = buildPlatePopupHtml(service);
+        marker.bindPopup(popupHtml, { maxWidth: 320, minWidth: 260 });
+        marker.openPopup();
+      }
+      map.flyTo(marker.getLatLng(), 14, { duration: 1 });
+      const el = marker.getElement();
+      if (el) {
+        el.classList.add("client-marker-highlight");
+        setTimeout(() => el.classList.remove("client-marker-highlight"), 3000);
+      }
+      return;
+    }
 
-    const popupHtml = buildPlatePopupHtml(service);
-    marker.bindPopup(popupHtml, { maxWidth: 320, minWidth: 260 });
-    marker.openPopup();
-
-    map.flyTo(marker.getLatLng(), 14, { duration: 1 });
-
-    const el = marker.getElement();
-    if (el) {
-      el.classList.add("client-marker-highlight");
-      setTimeout(() => el.classList.remove("client-marker-highlight"), 3000);
+    const city = service.cityDetected;
+    const state = service.stateDetected;
+    if (city) {
+      const key = `${city.toUpperCase().trim()}, ${(state || "").toUpperCase().trim()}`;
+      const coords = brCityCoords[key];
+      if (coords) {
+        map.flyTo([coords.lat, coords.lng], 10, { duration: 1 });
+      }
     }
   }, []);
 
   const handleClientFilter = useCallback((_personName: string, allIds: string[], validIds: string[]) => {
     setClientSearchActive(true);
     setClientFilterIds(new Set(allIds));
-    pendingFitBoundsRef.current = { validIds };
-  }, []);
+    setRenderTick((t) => t + 1);
+    const latlngs: { lat: number; lng: number }[] = [];
+    for (const p of points) {
+      if (p.clientId && validIds.includes(p.clientId)) {
+        latlngs.push({ lat: p.lat, lng: p.lng });
+      }
+    }
+    if (latlngs.length > 0) {
+      pendingZoomRef.current = { latlngs };
+    }
+  }, [points]);
 
   const handleClearClientFilter = useCallback(() => {
     setClientSearchActive(false);
     setClientFilterIds(new Set());
-    pendingFitBoundsRef.current = null;
+    setRenderTick((t) => t + 1);
+    pendingZoomRef.current = null;
   }, []);
 
   // Clear client filter when focusing on tech or plate search
@@ -908,16 +937,37 @@ export function RoteirizacaoMap({
             <ClientSearch clients={clients} onSelectVehicle={handlePlateSelect} onFilterPerson={handleClientFilter} onClearFilter={handleClearClientFilter} />
           </div>
         </div>
-        <div
-          ref={mapRef}
-          style={{
-            width: "100%",
-            height: "calc(100vh - 160px)",
-            minHeight: "400px",
-            borderRadius: "8px",
-          }}
-          className="border"
-        />
+        <div className="relative">
+          <div
+            ref={mapRef}
+            style={{
+              width: "100%",
+              height: "calc(100vh - 160px)",
+              minHeight: "400px",
+              borderRadius: "8px",
+            }}
+            className="border"
+          />
+          {selectedTech && (
+            <div className="absolute top-3 left-3 z-[1000] flex gap-1 bg-background/95 border rounded-md p-1.5 shadow-md">
+              <input
+                ref={techDestInputRef}
+                type="text"
+                value={techDestAddr}
+                onChange={(e) => setTechDestAddr(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleTechRoute(); }}
+                placeholder="Endereço de destino..."
+                className="w-52 h-8 px-2 text-xs rounded border border-input bg-background outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <button
+                onClick={handleTechRoute}
+                className="h-8 px-2.5 text-xs font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Pesquisar
+              </button>
+            </div>
+          )}
+        </div>
         <div className="flex gap-4 text-xs text-muted-foreground px-1 flex-wrap">
           <span className="flex items-center gap-1">
             <span
