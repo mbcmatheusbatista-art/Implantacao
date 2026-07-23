@@ -433,13 +433,31 @@ export function RoteirizacaoMap({
         center: [-14.235, -51.9253],
         zoom: 4,
         zoomControl: false,
+        maxZoom: 19,
       });
       map.whenReady(() => map.invalidateSize());
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
-        maxZoom: 18,
-      }).addTo(map);
+        maxZoom: 19,
+      });
+      const satellite = L.layerGroup([
+        L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+          attribution: '&copy; <a href="https://esri.com">Esri</a>',
+          maxZoom: 19,
+        }),
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+          attribution: '&copy; <a href="https://carto.com">CARTO</a>',
+          maxZoom: 19,
+        }),
+      ]);
+      osm.addTo(map);
+
+      L.control.layers(
+        { "Mapa": osm, "Satélite": satellite },
+        {},
+        { position: "bottomleft" },
+      ).addTo(map);
 
       L.control.zoom({ position: "topright" }).addTo(map);
 

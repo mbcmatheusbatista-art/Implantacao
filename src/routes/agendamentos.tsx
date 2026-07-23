@@ -200,16 +200,6 @@ function AgendamentosPage() {
     return result;
   }, [services, selectedTechFilter, selectedStatusFilter, statusOverrides, hiddenTechs]);
 
-  const groupedByStatus = useMemo(() => {
-    const g: Record<string, typeof services> = {};
-    for (const s of filteredServices) {
-      const status = getEffectiveStatus(s);
-      if (!g[status]) g[status] = [];
-      g[status].push(s);
-    }
-    return g;
-  }, [filteredServices, statusOverrides]);
-
   const selectedTechObj = useMemo(() => {
     if (selectedTechFilter === "all") return null;
     return resolveTech(selectedTechFilter);
@@ -349,6 +339,7 @@ function AgendamentosPage() {
                         checked={includeAgendando}
                         onChange={(e) => setIncludeAgendando(e.target.checked)}
                         className="accent-primary"
+                        disabled={selectedStatusFilter === "AGENDANDO"}
                       />
                       Incluir AGENDANDO
                     </label>
@@ -365,7 +356,7 @@ function AgendamentosPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <CalendarDays className="w-4 h-4" />
-                Atendimentos {selectedTechFilter !== "all" ? `de ${selectedTechFilter}` : ""}
+                Agendado{selectedTechFilter !== "all" ? ` — ${resolveTechName(selectedTechFilter)}` : ""}
                 <Badge variant="outline">{filteredServices.length}</Badge>
               </CardTitle>
             </CardHeader>
@@ -473,7 +464,7 @@ function AgendamentosPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <CalendarDays className="w-4 h-4" />
-                  Resumo por status — {selectedTechFilter}
+                  AGENDANDO
                 </CardTitle>
                 <Button
                   variant="destructive"
@@ -489,31 +480,32 @@ function AgendamentosPage() {
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {Object.entries(groupedByStatus).map(([status, items]) => (
-                    <div key={status}>
-                      <h3 className="text-sm font-bold mb-2 flex items-center gap-2">
-                        {status}
-                        <Badge variant="outline">{items.length}</Badge>
-                      </h3>
-                      <ul className="space-y-1">
-                        {items.map((svc) => (
-                          <li key={svc.id} className="text-sm py-1 border-b last:border-0">
-                            <span className="font-mono text-xs font-semibold">
-                              {svc.plateOriginal || "—"}
-                            </span>
-                            <span className="text-muted-foreground">
-                              {" "}— {getDataHora(svc) || "sem data"} — {svc.fullAddress}
-                            </span>
-                            <Badge variant="secondary" className="ml-2 text-[10px]">
-                              {equipmentLabel(svc.equipmentNormalized)}
-                            </Badge>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
+                {(() => {
+                  const agendando = selectedTechFilter === "all" ? [] : services.filter(s => {
+                    const name = s.technicianOriginal?.toLowerCase().trim();
+                    return !(name && hiddenTechs.has(name)) && filterByTech(s, selectedTechFilter) && getEffectiveStatus(s) === "AGENDANDO";
+                  });
+                  return agendando.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhum atendimento com status AGENDANDO.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {agendando.map((svc) => (
+                        <li key={svc.id} className="text-sm py-1 border-b last:border-0">
+                          <span className="font-mono text-xs font-semibold">
+                            {svc.plateOriginal || "—"}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {" "}— {getDataHora(svc) || "sem data"} — {svc.fullAddress}
+                          </span>
+                          <Badge variant="secondary" className="ml-2 text-[10px]">
+                            {equipmentLabel(svc.equipmentNormalized)}
+                          </Badge>
+                        </li>
+                      ))}
+                  </ul>
+                )})()}
               </CardContent>
             </Card>
           )}
