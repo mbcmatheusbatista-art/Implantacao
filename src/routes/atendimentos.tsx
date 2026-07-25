@@ -147,6 +147,7 @@ function ConfirmedServicesPage() {
                     <th className="p-2">Equipamento</th>
                     <th className="p-2">Status</th>
                     <th className="p-2">Possível técnico</th>
+                    <th className="p-2 text-center">!WPP Técnicos!</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -238,12 +239,30 @@ function ConfirmedServicesPage() {
                             {s.serviceStatus || "—"}
                           </Badge>
                         </td>
-                        <td className="p-2">
-                          <div className="flex items-center gap-2">
+                        <td className="p-2 text-xs font-medium">
+                          {(() => {
+                            const tech = t || (cleanName ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim())) : null);
+                            const name = tech ? (tech.firstName || tech.nameOriginal) : cleanName;
+                            if (!name) {
+                              return (
+                                <Link
+                                  to="/distribuicao"
+                                  search={{ serviceId: s.id }}
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  Atribuir
+                                </Link>
+                              );
+                            }
+                            return name;
+                          })()}
+                        </td>
+                        <td className="p-2 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
                             {(() => {
                               const tech = t || (cleanName ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim())) : null);
                               const name = tech ? (tech.firstName || tech.nameOriginal) : cleanName;
-                              const phoneRaw = tech ? (tech.phoneNormalized || tech.phoneOriginal || "") : "";
+                              const phoneRaw = tech ? (tech.phoneNormalized || tech.phoneOriginal || "") : cleanName;
                               const phoneParts = phoneRaw ? phoneRaw.split("/").map(p => p.trim()).filter(Boolean) : [];
                               const contacts: { name: string; digits: string }[] = [];
                               for (const part of phoneParts) {
@@ -254,39 +273,28 @@ function ConfirmedServicesPage() {
                                   contacts.push({ name: contactName, digits });
                                 }
                               }
-                              if (!name) {
-                                return (
-                                  <Link
-                                    to="/distribuicao"
-                                    search={{ serviceId: s.id }}
-                                    className="text-xs text-primary hover:underline"
-                                  >
-                                    Atribuir
-                                  </Link>
-                                );
+
+                              console.log(`[ATENDIMENTOS] Analisando técnico para WPP:`, {
+                                serviceId: s.id,
+                                cleanName,
+                                techResolved: tech ? tech.nameOriginal : null,
+                                contacts,
+                              });
+
+                              if (contacts.length > 0) {
+                                return contacts.map((c, i) => {
+                                  const url = buildWhatsAppUrl(c.digits, "");
+                                  return url ? (
+                                    <a key={i} href={url} target="_blank" rel="noopener noreferrer" title={c.name ? `Contato: ${c.name}` : undefined}>
+                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-6 w-6 p-0 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 shadow-sm">
+                                        <MessageCircle className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </a>
+                                  ) : null;
+                                });
+                              } else {
+                                return <span className="text-destructive text-xs">sem telefone</span>;
                               }
-                              return (
-                                <>
-                                  <span className="text-xs font-medium">{name}</span>
-                                  <div className="flex flex-col gap-1">
-                                    {contacts.length > 0 ? contacts.map((c, i) => {
-                                      const url = buildWhatsAppUrl(c.digits, "");
-                                      return url ? (
-                                        <div key={i} className="flex items-center gap-1">
-                                          {c.name && <span className="text-[10px]">{c.name}</span>}
-                                          <a href={url} target="_blank" rel="noopener noreferrer">
-                                            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-6 w-6 p-0">
-                                              <MessageCircle className="w-3 h-3" />
-                                            </Button>
-                                          </a>
-                                        </div>
-                                      ) : null;
-                                    }) : (
-                                      <span className="text-destructive text-xs">sem telefone</span>
-                                    )}
-                                  </div>
-                                </>
-                              );
                             })()}
                           </div>
                         </td>

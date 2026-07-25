@@ -301,7 +301,7 @@ export function RoteirizacaoMap({
           details: `${t.cityOriginal || ""}/${t.state || ""}`,
           city: t.cityOriginal || "",
           state: t.state || "",
-          address: SEED_ADDRESSES.get(seedKey || "") || t.address,
+          address: t.address || SEED_ADDRESSES.get(seedKey || "") || undefined,
           extra: extraLines.join("<br/>"),
           s8Eco: s8,
           g5Plus: g5,
@@ -383,12 +383,27 @@ export function RoteirizacaoMap({
 
   function handleTechRoute() {
     if (!selectedTech || !techDestAddr.trim()) return;
-    const origin =
-      selectedTech.address ||
-      (selectedTech.addressLat && selectedTech.addressLng
+    // Usa o endereço real do técnico (já enriquecido pelo applySeedAddresses em roteirizacao.tsx)
+    // Ignora endereços marcados como inválidos
+    const seedAddr = selectedTech.address;
+    const isValidAddr = seedAddr &&
+      !seedAddr.includes("não localizado") &&
+      !seedAddr.includes("não informado");
+    const origin = isValidAddr
+      ? seedAddr!
+      : (selectedTech.addressLat && selectedTech.addressLng
         ? `${selectedTech.addressLat},${selectedTech.addressLng}`
         : "");
-    if (!origin) return;
+    console.log("[MAPA][BUSCA] handleTechRoute", {
+      tecnico: selectedTech.nameOriginal,
+      enderecoSeed: seedAddr || "(sem endereço)",
+      enderecoUsado: origin || "(não encontrado — faltando coords)",
+      destino: techDestAddr,
+    });
+    if (!origin) {
+      console.warn("[MAPA][BUSCA] Técnico sem endereço e sem coordenadas, não é possível abrir rota.");
+      return;
+    }
     const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(techDestAddr.trim())}`;
     window.open(url, "_blank");
     setSelectedTechId(null);
@@ -700,9 +715,26 @@ export function RoteirizacaoMap({
             if (techMarker) {
               const from = techMarker.getLatLng();
               const techAddr = (techMarker as any).__techAddress;
-              const origin = techAddr ? techAddr : `${from.lat},${from.lng}`;
+              // Usa endereço real do técnico como origem (já enriquecido pelo applySeedAddresses)
+              const origin = techAddr && !techAddr.includes("não localizado") && !techAddr.includes("não informado")
+                ? techAddr
+                : `${from.lat},${from.lng}`;
+              // Usa endereço completo do cliente como destino quando disponível
+              const clientService = p.service;
+              const clientAddr = clientService?.fullAddress?.trim();
               const to = marker.getLatLng();
-              const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${to.lat},${to.lng}`;
+              const destination = clientAddr && clientAddr.length > 5
+                ? clientAddr
+                : `${to.lat},${to.lng}`;
+              console.log("[MAPA][ROTA] Abrindo Google Maps", {
+                tecnico: p.label,
+                enderecoOrigem: origin,
+                clienteDestino: destination,
+                techAddrBruto: techAddr || "(sem endereço seed)",
+                coordsOrigem: `${from.lat},${from.lng}`,
+                coordsDestino: `${to.lat},${to.lng}`,
+              });
+              const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
               window.open(url, "_blank");
             }
           }

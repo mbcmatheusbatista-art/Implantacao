@@ -76,12 +76,17 @@ export const useAppStore = create<AppState>((set) => ({
     saveToDb("diagnostics", { confirmed: diag }).catch(() => {});
   },
   setTechnicians: (r, meta, diag) => {
+    const fixPhone = (t: Technician) =>
+      t.nameOriginal.toLowerCase().includes("marcos luiz amorim")
+        ? { ...t, phoneOriginal: "11 91484-3217", phoneNormalized: "5511914843217", allPhones: ["5511914843217"] }
+        : t;
+    const fixed = r.map(fixPhone);
     set((s) => ({
-      technicians: r,
+      technicians: fixed,
       meta: { ...s.meta, technicians: meta },
       diagnostics: { ...s.diagnostics, technicians: diag },
     }));
-    saveToDb("technicians", r).catch(() => {});
+    saveToDb("technicians", fixed).catch(() => {});
     saveToDb("diagnostics", { technicians: diag }).catch(() => {});
   },
 
@@ -134,7 +139,13 @@ export async function hydrateFromDb(): Promise<void> {
 
     const toSet: Partial<AppState> = {};
 
-    if (data.technicians) toSet.technicians = data.technicians;
+    if (data.technicians) {
+      toSet.technicians = data.technicians.map((t) =>
+        t.nameOriginal.toLowerCase().includes("marcos luiz amorim")
+          ? { ...t, phoneOriginal: "11 91484-3217", phoneNormalized: "5511914843217", allPhones: ["5511914843217"] }
+          : t,
+      );
+    }
     if (data.confirmedServices) toSet.confirmedServices = data.confirmedServices;
     if (data.initialContacts) toSet.initialContacts = data.initialContacts;
     if (data.assignments) toSet.assignments = data.assignments;

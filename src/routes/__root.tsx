@@ -9,8 +9,9 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
-import { hydrateFromDb } from "@/stores/app-store";
+import { hydrateFromDb, useAppStore } from "@/stores/app-store";
 import { useSyncD1Tecnicos } from "@/services/use-d1-tecnicos";
+import { getSeedTechnicians } from "@/services/seed-data";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -132,6 +133,17 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   useEffect(() => { hydrateFromDb(); }, []);
+
+  useEffect(() => {
+    const { technicians, setTechnicians } = useAppStore.getState();
+    if (technicians.length > 0) return;
+    const seed = getSeedTechnicians();
+    setTechnicians(
+      seed,
+      { fileName: "seed", count: seed.length },
+      { fileName: "seed", headerRow: 0, columnsFound: [], columnsMapped: {}, columnsUnmapped: [], rowsImported: seed.length, rowsSkipped: 0, invalidPhones: 0, emptyPlates: 0, emptyNames: 0, emptyAddresses: 0, equipmentUnknown: 0, quantityUnparsed: 0, groupedContacts: 0, nameConflicts: 0, timestamp: Date.now() },
+    );
+  }, []);
 
   useSyncD1Tecnicos();
 

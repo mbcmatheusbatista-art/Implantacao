@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { calculateAllBalances } from "@/services/equipment-balance";
+import { applySeedAddresses } from "@/services/seed-data";
 
 const RoteirizacaoMap = lazy(() =>
   import("@/components/roteirizacao-map").then((m) => ({ default: m.RoteirizacaoMap })),
@@ -184,9 +185,15 @@ function RoteirizacaoPage() {
     [store.confirmedServices],
   );
 
+  // Enrich technicians with real addresses from the seed list before passing to the map
+  const enrichedTechnicians = useMemo(
+    () => applySeedAddresses(store.technicians),
+    [store.technicians],
+  );
+
   const balances = useMemo(
-    () => calculateAllBalances(store.technicians, store.confirmedServices),
-    [store.technicians, store.confirmedServices],
+    () => calculateAllBalances(enrichedTechnicians, store.confirmedServices),
+    [enrichedTechnicians, store.confirmedServices],
   );
 
   return (
@@ -238,7 +245,7 @@ function RoteirizacaoPage() {
         }
       >
         <RoteirizacaoMap
-          technicians={store.technicians}
+          technicians={enrichedTechnicians}
           clients={filteredServices}
           balances={balances}
           routesByTech={routes}

@@ -345,25 +345,55 @@ export function buildTechnicians(
   mapping: Partial<Record<FieldKey, string>>,
   headerRow: number,
 ): BuildResult<Technician> {
+  console.group("📥 [BUILD TECHNICIANS] Iniciando processamento de entrada de dados");
+  console.log("Total de linhas fornecidas:", rows.length);
+  console.log("Mapeamento de colunas recebido:", mapping);
+  console.log("Linha do cabeçalho:", headerRow);
+  
+  if (rows.length > 0) {
+    console.log("Exemplo das primeiras 5 linhas de entrada brutas:");
+    console.table(rows.slice(0, 5));
+  }
+
   const records: Technician[] = [];
+  const seen = new Map<string, Technician>();
   let imported = 0;
   let skipped = 0;
   let invalidPhones = 0;
   let quantityUnparsed = 0;
+  let duplicatesMerged = 0;
 
-  rows.forEach((row) => {
+  rows.forEach((row, idx) => {
     const nameRaw = getField(row, mapping, "technician");
     const phoneRaw = getField(row, mapping, "phone");
     const cityRaw = getField(row, mapping, "city");
     const stateRaw = getField(row, mapping, "state");
     const qRaw = getField(row, mapping, "quantity");
     const addressRaw = getField(row, mapping, "address");
+
+    console.groupCollapsed(`🔍 [Linha ${idx + 1}] Analisando técnico: ${nameRaw || "(Sem Nome)"}`);
+    console.log("Valores Brutos Extraídos:", {
+      technician: nameRaw,
+      phone: phoneRaw,
+      city: cityRaw,
+      state: stateRaw,
+      quantity: qRaw,
+      address: addressRaw
+    });
+
     if (!nameRaw && !phoneRaw && !cityRaw) {
       skipped++;
+      console.warn("⚠️ Linha pulada: técnico, telefone e cidade estão vazios na linha original.");
+      console.groupEnd();
       return;
     }
+
     const phoneResult = normalizeBrazilianPhone(phoneRaw);
+    console.log("Resultado da Normalização do Telefone:", phoneResult);
+
     const qty = parseTechnicianQuantity(qRaw);
+    console.log("Resultado do Parse da Quantidade/Estoque:", qty);
+
     const issues: string[] = [];
     if (!nameRaw) issues.push("Nome vazio");
     if (!cityRaw) issues.push("Cidade vazia");
@@ -372,11 +402,84 @@ export function buildTechnicians(
       invalidPhones++;
       issues.push(phoneResult.reason ?? "Telefone vazio");
     }
-    if (qty.status === "TEXTO_NAO_INTERPRETADO") quantityUnparsed++;
+    if (qty.status === "TEXTO_NAO_INTERPRETADO") {
+      quantityUnparsed++;
+      console.warn(`⚠️ Quantidade não interpretada na linha ${idx + 1}: "${qRaw}"`);
+    }
+
+    if (issues.length > 0) {
+      console.warn("🚨 Problemas de validação encontrados nesta linha:", issues);
+    }
 
     const eqBreakdown = parseEquipmentQuantity(qRaw);
+    const normalizedNameKey = (nameRaw || "").trim().toLowerCase();
 
-    records.push({
+    if (normalizedNameKey && seen.has(normalizedNameKey)) {
+      duplicatesMerged++;
+      const existing = seen.get(normalizedNameKey)!;
+      console.log(`♻️ Técnico duplicado detectado: "${nameRaw}". Mesclando informações...`);
+
+      // Merge phone numbers
+      if (phoneResult.primary && !existing.phoneNormalized) {
+        existing.phoneOriginal = phoneRaw;
+        existing.phoneNormalized = phoneResult.primary;
+      }
+      if (phoneResult.all && phoneResult.all.length > 0) {
+        existing.allPhones = Array.from(new Set([...existing.allPhones, ...phoneResult.all]));
+      }
+
+      // Merge address
+      if (addressRaw && !existing.address) {
+        existing.address = addressRaw;
+      }
+
+      // Merge city/state
+      if (cityRaw && !existing.cityOriginal) {
+        existing.cityOriginal = cityRaw;
+        existing.cityNormalized = cityRaw.trim();
+      }
+      if (stateRaw && !existing.state) {
+        existing.state = stateRaw.trim().toUpperCase();
+      }
+
+      // Merge quantities
+      if (qty.quantity !== null) {
+        existing.availableQuantity = (existing.availableQuantity ?? 0) + qty.quantity;
+        existing.stockStatus = "DISPONIVEL";
+      }
+
+      // Merge original quantity string representation
+      if (qRaw) {
+        const qClean = stripQuantityFormat(qRaw);
+        if (qClean && qClean !== "0" && qClean !== "—" && !existing.quantityOriginal.includes(qClean)) {
+          existing.quantityOriginal = existing.quantityOriginal && existing.quantityOriginal !== "—"
+            ? `${existing.quantityOriginal}, ${qClean}`
+            : qClean;
+        }
+      }
+
+      // Merge equipment breakdown
+      if (eqBreakdown) {
+        if (!existing.equipmentBreakdown) {
+          existing.equipmentBreakdown = { ...eqBreakdown };
+        } else {
+          for (const [eqKey, eqVal] of Object.entries(eqBreakdown)) {
+            existing.equipmentBreakdown[eqKey] = (existing.equipmentBreakdown[eqKey] ?? 0) + (eqVal ?? 0);
+          }
+        }
+      }
+
+      // Merge validation issues
+      if (issues.length > 0) {
+        existing.validationIssues = Array.from(new Set([...existing.validationIssues, ...issues]));
+      }
+
+      console.log("Estado atualizado após mesclagem:", existing);
+      console.groupEnd();
+      return;
+    }
+
+    const record: Technician = {
       id: uid(),
       nameOriginal: nameRaw,
       firstName: extractFirstName(nameRaw),
@@ -386,15 +489,32 @@ export function buildTechnicians(
       cityOriginal: cityRaw,
       cityNormalized: cityRaw.trim(),
       state: stateRaw.trim().toUpperCase(),
-      quantityOriginal: stripQuantityFormat(qRaw),
+      quantityOriginal: stripQuantityFormat(qRaw) || "—",
       availableQuantity: qty.quantity,
       stockStatus: qty.status,
       equipmentBreakdown: eqBreakdown,
       validationIssues: issues,
       address: addressRaw || undefined,
-    });
+    };
+    
+    console.log("Registro Técnico Final Gerado:", record);
+    records.push(record);
+    if (normalizedNameKey) {
+      seen.set(normalizedNameKey, record);
+    }
     imported++;
+    console.groupEnd();
   });
+
+  console.log("📊 [BUILD TECHNICIANS] Resumo do processamento:", {
+    totalProcessados: rows.length,
+    importadosUnicos: imported,
+    duplicadosMesclados: duplicatesMerged,
+    pulados: skipped,
+    telefonesInvalidos: invalidPhones,
+    quantidadesNaoInterpretadas: quantityUnparsed
+  });
+  console.groupEnd();
 
   return {
     records,
