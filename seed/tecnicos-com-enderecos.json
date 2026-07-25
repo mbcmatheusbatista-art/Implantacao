@@ -1,0 +1,537 @@
+[
+  {
+    "nome": "Heraldo",
+    "empresa": "ABSOLUTE SEGURANÇA E TECNOLOGIA LTDA",
+    "endereco": "Avenida Filinto Müller, nº 1120, Centro",
+    "numero": "1120",
+    "bairro": "Centro",
+    "cidade": "Três Lagoas",
+    "uf": "MS",
+    "cep": "79600-001"
+  },
+  {
+    "nome": "Adolfo",
+    "empresa": "ADOLFO 51 9688-6423 (CLIENTE)",
+    "telefone": "51 9688-6423"
+  },
+  {
+    "nome": "Ailana dos Santos Silva",
+    "endereco": "Rodovia BR-116, Distrito Industrial",
+    "bairro": "Distrito Industrial",
+    "cidade": "Vitória da Conquista",
+    "uf": "BA",
+    "cep": "45089-340"
+  },
+  {
+    "nome": "Antonio Sergio Brito de Jesus"
+  },
+  {
+    "nome": "Rafael Rogério da Silva",
+    "empresa": "AUTO SYSTEM RASTREAMENTO LTDA",
+    "telefone": "",
+    "endereco": "Rua Barão de Limeira, nº 751",
+    "numero": "751",
+    "bairro": "Pioneiros",
+    "cidade": "Campo Grande",
+    "uf": "MS",
+    "cep": "79070-150"
+  },
+  {
+    "nome": "Rafael Rogério da Silva",
+    "empresa": "AUTO SYSTEM RASTREAMENTO LTDA",
+    "telefone": "",
+    "endereco": "Rua Barão de Limeira, nº 751",
+    "numero": "751",
+    "bairro": "Pioneiros",
+    "cidade": "Campo Grande",
+    "uf": "MS",
+    "cep": "79070-150"
+  },
+  {
+    "nome": "Bruno Ricardo Medeiros Soares",
+    "endereco": "Avenida Professor Josué de Castro, nº 198, Casa 1, Fundos, Porto da Rosa",
+    "numero": "198",
+    "bairro": "Porto da Rosa",
+    "cidade": "São Gonçalo",
+    "uf": "RJ",
+    "cep": "24470-000"
+  },
+  {
+    "nome": "Carlos Alberto Nascimento Renno",
+    "endereco": "Rua Francisco Braz do Prado, nº 1192, Bloco 4, Apartamento 11, Parque Bom Retiro",
+    "numero": "1192",
+    "bairro": "Parque Bom Retiro",
+    "cidade": "Paulínia",
+    "uf": "SP",
+    "cep": "13142-126"
+  },
+  {
+    "nome": "Christofer da Silva Lisboa",
+    "endereco": "Rua Júlio Cordeiro, nº 589, Apartamento 201, Bloco 28, Águas Brancas",
+    "numero": "589",
+    "bairro": "Águas Brancas",
+    "cidade": "Ananindeua",
+    "uf": "PA",
+    "cep": "67033-210"
+  },
+  {
+    "nome": "Cleber",
+    "empresa": "CK INSTALAÇÃO E MANUTENÇÃO DE RASTREADORES LTDA",
+    "endereco": "Rua Augusto Bertoldi, nº 35",
+    "numero": "35",
+    "bairro": "Campo de Santana",
+    "cidade": "Curitiba",
+    "uf": "PR",
+    "cep": "81490-420"
+  },
+  {
+    "nome": "Cleber",
+    "empresa": "CK INSTALAÇÃO E MANUTENÇÃO DE RASTREADORES LTDA",
+    "endereco": "Rua Augusto Bertoldi, nº 35",
+    "numero": "35",
+    "bairro": "Campo de Santana",
+    "cidade": "Curitiba",
+    "uf": "PR",
+    "cep": "81490-420"
+  },
+  {
+    "nome": "Thiago",
+    "empresa": "CK INSTALAÇÃO E MANUTENÇÃO DE RASTREADORES LTDA",
+    "endereco": "Rua Augusto Bertoldi, nº 35",
+    "numero": "35",
+    "bairro": "Campo de Santana",
+    "cidade": "Curitiba",
+    "uf": "PR",
+    "cep": "81490-420"
+  },
+  {
+    "nome": "Douglas Carvalho Machado",
+    "empresa": "D C MACHADO SERVIÇOS AUTOMOTORES",
+    "endereco": "Rua João Rodrigues da Cunha, Cabral, Nilópolis - RJ",
+    "numero": "",
+    "bairro": "Cabral",
+    "cidade": "Nilópolis",
+    "uf": "RJ",
+    "cep": "26510-049"
+  },
+  {
+    "nome": "Diego Kurunzi",
+    "empresa": "D.K.C. INSTALAÇÕES AUTOMOTIVAS LTDA",
+    "endereco": "Avenida Barcelona, nº 777, Jardim Panorama",
+    "numero": "777",
+    "bairro": "Jardim Panorama",
+    "cidade": "Sarandi",
+    "uf": "PR",
+    "cep": "87113-230"
+  },
+  {
+    "nome": "Danilo Daniel",
+    "endereco": "Rua Ricardo Melotto, nº 627",
+    "numero": "627",
+    "bairro": "Santa Terezinha",
+    "cidade": "Piracicaba",
+    "uf": "SP",
+    "cep": "13411-068"
+  },
+  {
+    "nome": "Diego Gomes Rodrigues",
+    "endereco": "Rua Amazonas, nº 384, Roxo Verde",
+    "numero": "384",
+    "bairro": "Roxo Verde",
+    "cidade": "Montes Claros",
+    "uf": "MG",
+    "cep": "39400-534"
+  },
+  {
+    "nome": "Diego Souza Balduino",
+    "endereco": "Rua Vitalino Machado, nº 125, Conjunto Habitacional Hilda Mandarino",
+    "numero": "125",
+    "bairro": "Conjunto Habitacional Hilda Mandarino",
+    "cidade": "Araçatuba",
+    "uf": "SP",
+    "cep": "16012-510"
+  },
+  {
+    "nome": "Diego Souza Balduino",
+    "endereco": "Rua Vitalino Machado, nº 125, Conjunto Habitacional Hilda Mandarino",
+    "numero": "125",
+    "bairro": "Conjunto Habitacional Hilda Mandarino",
+    "cidade": "Araçatuba",
+    "uf": "SP",
+    "cep": "16012-510"
+  },
+  {
+    "nome": "Ed Carlos Alves Rodrigues",
+    "endereco": "Rua Frederico Moura, nº 1664, Cidade Nova",
+    "numero": "1664",
+    "bairro": "Cidade Nova",
+    "cidade": "Franca",
+    "uf": "SP",
+    "cep": "14401-150"
+  },
+  {
+    "nome": "Edvan Soares",
+    "endereco": "Rua Padre Manuel da Nóbrega, nº 424, Apartamento 101, Bloco 1, Fanny",
+    "numero": "424",
+    "bairro": "Fanny",
+    "cidade": "Curitiba",
+    "uf": "PR",
+    "cep": "81030-330"
+  },
+  {
+    "nome": "Danilo",
+    "empresa": "EFRAIM RASTREAMENTO E GESTÃO DE FROTA LTDA",
+    "endereco": "Rua Vereador Jone Kiss, nº 925",
+    "numero": "925",
+    "bairro": "Itinga",
+    "cidade": "Lauro de Freitas",
+    "uf": "BA",
+    "cep": "42739-160"
+  },
+  {
+    "nome": "Filipe Barcelos de Almeida",
+    "endereco": "Rua Carbonita, nº 359, Apartamento 307, Braz de Pina",
+    "numero": "359",
+    "bairro": "Braz de Pina",
+    "cidade": "Rio de Janeiro",
+    "uf": "RJ",
+    "cep": "21215-210"
+  },
+  {
+    "nome": "Helder Renato Soares"
+  },
+  {
+    "nome": "Jonathn Oliveira Secchin",
+    "empresa": "J.O. SECCHIN ME (VIX INSTALAÇÕES)",
+    "endereco": "Avenida Mauro Miranda Madureira, nº 708, Elpídio Volpini",
+    "numero": "708",
+    "bairro": "Elpídio Volpini",
+    "cidade": "Cachoeiro de Itapemirim",
+    "uf": "ES",
+    "cep": "29309-712"
+  },
+  {
+    "nome": "Jeferson Ferreira do Nascimento"
+  },
+  {
+    "nome": "Jeilson de Medeiros Bezerra",
+    "endereco": "Rua Martins Júnior, Planalto Treze de Maio",
+    "numero": "",
+    "bairro": "Planalto Treze de Maio",
+    "cidade": "Mossoró",
+    "uf": "RN",
+    "cep": "59631-350"
+  },
+  {
+    "nome": "João Evangelista dos Santos Junior",
+    "endereco": "Rua Nossa Senhora de Lourdes, nº 940, Anexo Casa, João Alves",
+    "numero": "940",
+    "bairro": "João Alves",
+    "cidade": "Nossa Senhora do Socorro",
+    "uf": "SE",
+    "cep": "49155-530"
+  },
+  {
+    "nome": "João Vitor Bassi Costa",
+    "endereco": "Rua José Gomes Domingues, nº 200",
+    "numero": "200",
+    "bairro": "Jaqueline",
+    "cidade": "Belo Horizonte",
+    "uf": "MG",
+    "cep": "31748-075"
+  },
+  {
+    "nome": "Jacson Pontelli",
+    "empresa": "JP RASTREADORES"
+  },
+  {
+    "nome": "Adilson Augusto",
+    "empresa": "KADOSH-TEC SERVIÇOS DE RASTREAMENTO LTDA",
+    "endereco": "Rua Pássaro-Lira, nº 161, Goiânia",
+    "numero": "161",
+    "bairro": "Goiânia",
+    "cidade": "Belo Horizonte",
+    "uf": "MG",
+    "cep": "31950-520"
+  },
+  {
+    "nome": "Luis Antonio Campos Nascimento",
+    "empresa": "KARLA NEVES DE SOUSA DO NASCIMENTO",
+    "endereco": "Rua Projetada 8B, Casa, Vila Conceição",
+    "numero": "",
+    "bairro": "Vila Conceição",
+    "cidade": "São Luís",
+    "uf": "MA",
+    "cep": "65057-719"
+  },
+  {
+    "nome": "Renan",
+    "empresa": "LARISSA GABRIELE DO AMARAL",
+    "cidade": "Guariba",
+    "uf": "SP"
+  },
+  {
+    "nome": "Leonardo da Silva Matos",
+    "endereco": "Avenida Queixadas, nº 13C, Jardim Camargo Novo",
+    "numero": "13C",
+    "bairro": "Jardim Camargo Novo",
+    "cidade": "São Paulo",
+    "uf": "SP",
+    "cep": "08121-170"
+  },
+  {
+    "nome": "Lessandra Reis e Hygor Figueiredo",
+    "empresa": "LESSANDRA OU HYGOR (CLIENTE)"
+  },
+  {
+    "nome": "Lourival Donizeti de Paula",
+    "endereco": "Avenida João Alves Costa, nº 977, Alta Villa Lavras",
+    "numero": "977",
+    "bairro": "Alta Villa Lavras",
+    "cidade": "Lavras",
+    "uf": "MG",
+    "cep": "37205-370"
+  },
+  {
+    "nome": "Lucas da Silveira Neves Belim",
+    "endereco": "Rua Jesus Cristo, nº 9, Quadra 04, Setor Ásia, Cidade Continental",
+    "numero": "9",
+    "bairro": "Setor Ásia",
+    "cidade": "Serra",
+    "uf": "ES",
+    "cep": "29163-645"
+  },
+  {
+    "nome": "Marcos Luiz Amorim Santos",
+    "telefone": "11 91484-3217",
+    "endereco": "Rua Ana Maria Sirani, nº 639, Conjunto Residencial José Bonifácio",
+    "numero": "639",
+    "bairro": "Conjunto Residencial José Bonifácio",
+    "cidade": "São Paulo",
+    "uf": "SP",
+    "cep": "08255-400"
+  },
+  {
+    "nome": "Marcos Luiz Amorim Santos",
+    "telefone": "11 91484-3217",
+    "endereco": "Rua Ana Maria Sirani, nº 639, Conjunto Residencial José Bonifácio",
+    "numero": "639",
+    "bairro": "Conjunto Residencial José Bonifácio",
+    "cidade": "São Paulo",
+    "uf": "SP",
+    "cep": "08255-400"
+  },
+  {
+    "nome": "Maurilo Roberto Oliveira da Cunha",
+    "endereco": "Passagem Vista Alegre, nº 22",
+    "numero": "22",
+    "bairro": "Pedreira",
+    "cidade": "Belém",
+    "uf": "PA",
+    "cep": "66080-510"
+  },
+  {
+    "nome": "Murillo Augusto Pereira da Silva"
+  },
+  {
+    "nome": "Odirlei Andretti",
+    "empresa": "ODIRLEI ANDRETTI & CIA LTDA",
+    "endereco": "Avenida Paraná, nº 827, Lote 17, Quadra 68, Presidente Kennedy",
+    "numero": "827",
+    "bairro": "Presidente Kennedy",
+    "cidade": "Francisco Beltrão",
+    "uf": "PR",
+    "cep": "85605-610"
+  },
+  {
+    "nome": "José Kaliski",
+    "empresa": "ODIRLEI ANDRETTI & CIA LTDA",
+    "endereco": "Avenida Paraná, nº 827, Lote 17, Quadra 68, Presidente Kennedy",
+    "numero": "827",
+    "bairro": "Presidente Kennedy",
+    "cidade": "Francisco Beltrão",
+    "uf": "PR",
+    "cep": "85605-610"
+  },
+  {
+    "nome": "Nathália Custódio",
+    "empresa": "ODIRLEI ANDRETTI & CIA LTDA",
+    "endereco": "Avenida Paraná, nº 827, Lote 17, Quadra 68, Presidente Kennedy",
+    "numero": "827",
+    "bairro": "Presidente Kennedy",
+    "cidade": "Francisco Beltrão",
+    "uf": "PR",
+    "cep": "85605-610"
+  },
+  {
+    "nome": "Anderson Carneiro",
+    "empresa": "OLSON SOLUÇÕES LTDA",
+    "endereco": "Rua Henrique Bráulio de Melo Sobrinho, Jardim Santa Luzia",
+    "numero": "",
+    "bairro": "Jardim Santa Luzia",
+    "cidade": "São José dos Campos",
+    "uf": "SP",
+    "cep": "12228-850"
+  },
+  {
+    "nome": "André Fonseca",
+    "empresa": "OLSON SOLUÇÕES LTDA",
+    "endereco": "Rua Henrique Bráulio de Melo Sobrinho, Jardim Santa Luzia",
+    "numero": "",
+    "bairro": "Jardim Santa Luzia",
+    "cidade": "São José dos Campos",
+    "uf": "SP",
+    "cep": "12228-850"
+  },
+  {
+    "nome": "Valnei",
+    "empresa": "PUK PUK MECÂNICA AUTOMOTIVA LTDA",
+    "endereco": "Estrada Costa Rica/Alcinópolis, Km 03, lado direito",
+    "numero": "Km 03",
+    "bairro": "",
+    "cidade": "Costa Rica",
+    "uf": "MS",
+    "cep": "79550-000"
+  },
+  {
+    "nome": "Claudia",
+    "empresa": "R2 EQUIPADORA",
+    "endereco": "Avenida Recife, nº 3390, Ibura",
+    "numero": "3390",
+    "bairro": "Ibura",
+    "cidade": "Recife",
+    "uf": "PE"
+  },
+  {
+    "nome": "Reginaldo Alves Bezerra",
+    "endereco": "Avenida Dorgival Pinheiro de Sousa, nº 334, Vila Lobão",
+    "numero": "334",
+    "bairro": "Vila Lobão",
+    "cidade": "Imperatriz",
+    "uf": "MA",
+    "cep": "65910-010"
+  },
+  {
+    "nome": "Reinaldo Aparecido de Oliveira",
+    "endereco": "Rua Seikiti Nakayama, nº 300, Jardim Tupanci",
+    "numero": "300",
+    "bairro": "Jardim Tupanci",
+    "cidade": "Barueri",
+    "uf": "SP",
+    "cep": "06414-005"
+  },
+  {
+    "nome": "Reinaldo Aparecido de Oliveira",
+    "endereco": "Rua Seikiti Nakayama, nº 300, Jardim Tupanci",
+    "numero": "300",
+    "bairro": "Jardim Tupanci",
+    "cidade": "Barueri",
+    "uf": "SP",
+    "cep": "06414-005"
+  },
+  {
+    "nome": "Ricardo M. da Rocha",
+    "empresa": "RICARDO M. DA ROCHA LTDA",
+    "endereco": "Alameda Denilson de Paula, nº 69",
+    "numero": "69",
+    "bairro": "Buritis",
+    "cidade": "Uberlândia",
+    "uf": "MG",
+    "cep": "38410-008"
+  },
+  {
+    "nome": "Ricardo Cruz",
+    "empresa": "SOUZA CRUZ MONITORAMENTO LTDA",
+    "cidade": "Ribeirão Preto",
+    "uf": "SP"
+  },
+  {
+    "nome": "Ricardo Cruz",
+    "empresa": "SOUZA CRUZ MONITORAMENTO LTDA",
+    "cidade": "Ribeirão Preto",
+    "uf": "SP"
+  },
+  {
+    "nome": "Kléber",
+    "empresa": "SS INSTALAÇÕES DE RASTREADORES LTDA",
+    "endereco": "Avenida dos Autonomistas, nº 5578, Km 18",
+    "numero": "5578",
+    "bairro": "Km 18",
+    "cidade": "Osasco",
+    "uf": "SP",
+    "cep": "06194-060"
+  },
+  {
+    "nome": "Alan",
+    "empresa": "SS INSTALAÇÕES DE RASTREADORES LTDA",
+    "endereco": "Avenida dos Autonomistas, nº 5578, Km 18",
+    "numero": "5578",
+    "bairro": "Km 18",
+    "cidade": "Osasco",
+    "uf": "SP",
+    "cep": "06194-060"
+  },
+  {
+    "nome": "Walisson",
+    "empresa": "TATIANE PATRÍCIA DA SILVA COSTA"
+  },
+  {
+    "nome": "Valdinei Luiz de Oliveira",
+    "endereco": "Rua Antônio Bertoncini, nº 402",
+    "numero": "402",
+    "cidade": "Santa Cruz do Rio Pardo",
+    "uf": "SP"
+  },
+  {
+    "nome": "Michael Crespo",
+    "empresa": "VEMAR AUTO CENTER LTDA",
+    "endereco": "Avenida Doutor Newton Guaraná, nº 185, Parque Penha",
+    "numero": "185",
+    "bairro": "Parque Penha",
+    "cidade": "Campos dos Goytacazes",
+    "uf": "RJ",
+    "cep": "28021-245"
+  },
+  {
+    "nome": "Vinicius Araújo",
+    "empresa": "VXTECH CONECTA LTDA",
+    "endereco": "10ª Rua Caju, nº 1157, Casa",
+    "numero": "1157",
+    "bairro": "Caju",
+    "cidade": "Nova Santa Rita",
+    "uf": "RS",
+    "cep": "92480-000"
+  },
+  {
+    "nome": "James",
+    "empresa": "VXTECH CONECTA LTDA",
+    "endereco": "10ª Rua Caju, nº 1157, Casa",
+    "numero": "1157",
+    "bairro": "Caju",
+    "cidade": "Nova Santa Rita",
+    "uf": "RS",
+    "cep": "92480-000"
+  },
+  {
+    "nome": "Warllen Tadeu",
+    "empresa": "WILLIAM LUCAS ARAÚJO SANTOS",
+    "cidade": "Pará de Minas",
+    "uf": "MG"
+  },
+  {
+    "nome": "Marco Túlio",
+    "empresa": "WILLIAM LUCAS ARAÚJO SANTOS",
+    "cidade": "Pará de Minas",
+    "uf": "MG"
+  },
+  {
+    "nome": "Washiton",
+    "empresa": "Z-TEC SERVIÇOS DE MANUTENÇÃO DE VEÍCULOS LTDA",
+    "endereco": "Rua México, nº 33, Areinha",
+    "numero": "33",
+    "bairro": "Areinha",
+    "cidade": "Viana",
+    "uf": "ES",
+    "cep": "29137-037"
+  }
+]
