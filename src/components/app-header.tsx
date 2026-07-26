@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useRouterState } from "@tanstack/react-router";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -14,7 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Moon, Sun, Trash2 } from "lucide-react";
+import { Moon, PanelLeftOpen, Sun, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/stores/app-store";
 
@@ -22,6 +23,19 @@ export function AppHeader() {
   const meta = useAppStore((s) => s.meta);
   const clearAll = useAppStore((s) => s.clearAll);
   const [open, setOpen] = useState(false);
+  const pathname = useRouterState({ select: (router) => router.location.pathname });
+  const previousPathname = useRef<string | null>(null);
+  const { setOpen: setSidebarOpen } = useSidebar();
+  const isRoutingMap = pathname === "/roteirizacao";
+
+  useEffect(() => {
+    // A visualização do mapa precisa do máximo de área possível. Fazemos isso
+    // somente ao entrar na rota, sem impedir que a pessoa reabra o menu depois.
+    if (isRoutingMap && previousPathname.current !== pathname) {
+      setSidebarOpen(false);
+    }
+    previousPathname.current = pathname;
+  }, [isRoutingMap, pathname, setSidebarOpen]);
 
   const badges: { label: string; value: number; file?: string }[] = [];
   if (meta.initial)
@@ -47,7 +61,21 @@ export function AppHeader() {
 
   return (
     <header className="h-14 flex items-center gap-3 border-b bg-card px-3 sticky top-0 z-10">
-      <SidebarTrigger />
+      <SidebarTrigger
+        className={isRoutingMap ? "fixed left-10 top-2 z-[1200] h-9 w-9 rounded-md border bg-background shadow-sm hover:bg-accent" : undefined}
+      />
+      {isRoutingMap && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="fixed left-[5.25rem] top-[7.5rem] z-[2000] gap-1.5 bg-background shadow-md"
+          onClick={() => setSidebarOpen(true)}
+          title="Voltar ao menu lateral"
+        >
+          <PanelLeftOpen className="h-4 w-4" /> Voltar
+        </Button>
+      )}
       <div className="flex-1 min-w-0">
         <h1 className="text-sm font-semibold truncate">
           Assistente de Contatos e Agendamentos Creare

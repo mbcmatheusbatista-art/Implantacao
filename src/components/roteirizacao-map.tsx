@@ -10,9 +10,6 @@ import {
   type RouteDistance,
 } from "@/services/distance";
 import type { EquipmentBalance } from "@/services/equipment-balance";
-import { TechSearch } from "./roteirizacao-tech-search";
-import { PlateSearch } from "./roteirizacao-plate-search";
-import { ClientSearch } from "./roteirizacao-client-search";
 import { parsePeopleFromResponsibleText, type PersonInfo } from "@/utils/parse-responsible-contact";
 import { associatePhonesToPeople } from "@/utils/extract-phones";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
@@ -20,6 +17,7 @@ import { getGreetingByCurrentTime } from "@/utils/greeting";
 import { normalizeText, stripFormatMarkers } from "@/utils/normalize-text";
 import { equipmentLabel } from "@/utils/normalize-equipment";
 import { findFixedTechnicianLocation } from "@/services/seed-data";
+import { GripVertical, Search, X } from "lucide-react";
 
 const STATE_REGION: Record<string, string> = {
   AC: "Norte",
@@ -157,6 +155,34 @@ function getStatusColor(status: string): string {
   if (status === "AGENDANDO") return "#000000";
   if (status === "AGENDADO") return "#2563eb";
   return "";
+}
+
+type MapSearchResult =
+  | { kind: "tech"; technician: Technician }
+  | { kind: "client"; service: ConfirmedService }
+  | { kind: "clientPerson"; name: string; recordIds: string[] };
+
+function findClientPeople(clients: ConfirmedService[], query: string): MapSearchResult[] {
+  const people = new Map<string, { name: string; recordIds: string[] }>();
+  for (const service of clients) {
+    for (const person of parsePeopleFromResponsibleText(service.responsibleOriginal).people) {
+      // A busca por cliente deve considerar somente quem consta como
+      // responsável principal pelo veículo, e não gestores ou contatos extras.
+      if (person.role !== "primary") continue;
+      const normalizedName = normalizeText(person.fullName);
+      if (!normalizedName.includes(query)) continue;
+      const existing = people.get(normalizedName);
+      if (existing) {
+        if (!existing.recordIds.includes(service.id)) existing.recordIds.push(service.id);
+      } else {
+        people.set(normalizedName, { name: person.fullName, recordIds: [service.id] });
+      }
+    }
+  }
+  return [...people.values()]
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+    .slice(0, 8)
+    .map((person) => ({ kind: "clientPerson" as const, ...person }));
 }
 
 function getAssociatedTechnicianText(service: ConfirmedService): string {
@@ -470,7 +496,15 @@ export function RoteirizacaoMap({
   const [renderTick, setRenderTick] = useState(0);
   const [clientSearchActive, setClientSearchActive] = useState(false);
   const [clientFilterIds, setClientFilterIds] = useState<Set<string>>(new Set());
+  const [shortcutSearchOpen, setShortcutSearchOpen] = useState(false);
+  const [shortcutSearchQuery, setShortcutSearchQuery] = useState("");
+  const shortcutSearchRef = useRef<HTMLInputElement>(null);
+  const shortcutDialogRef = useRef<HTMLDivElement>(null);
+  const [shortcutDialogPosition, setShortcutDialogPosition] = useState<{ x: number; y: number } | null>(null);
+  const [topSearchOpen, setTopSearchOpen] = useState(false);
+  const [topSearchQuery, setTopSearchQuery] = useState("");
   const pendingZoomRef = useRef<{ latlngs: { lat: number; lng: number }[] } | null>(null);
+  const preserveViewportOnNextMarkerUpdateRef = useRef(false);
   const searchAreaRef = useRef<HTMLDivElement>(null);
   const [selectedTechId, setSelectedTechId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -710,9 +744,67 @@ export function RoteirizacaoMap({
       statusesByCoordinate.set(coordinateKey, statuses);
     }
 
+    // Vários veículos podem ter a mesma coordenada de cidade. Enquanto uma
+    // busca de cliente está ativa, abrimos esses marcadores em um pequeno leque
+    // visual para que todos possam ser vistos e selecionados. O endereço e a
+    // rota continuam usando os dados reais, sem nenhuma alteração.
+    const clientMarkerPositions = new Map<string, { lat: number; lng: number }>();
+    if (clientSearchActive) {
+      const clusters = new Map<string, Point[]>();
+      for (const point of visiblePoints) {
+        if (point.type !== "client" || !point.clientId) continue;
+        const key = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+        const cluster = clusters.get(key) || [];
+        cluster.push(point);
+        clusters.set(key, cluster);
+      }
+      for (const cluster of clusters.values()) {
+        if (cluster.length < 2) continue;
+        const radius = 0.006;
+        cluster.forEach((point, index) => {
+          const angle = (Math.PI * 2 * index) / cluster.length;
+          clientMarkerPositions.set(point.clientId!, {
+            lat: point.lat + Math.sin(angle) * radius,
+            lng: point.lng + Math.cos(angle) * radius,
+          });
+        });
+      }
+    }
+
+    // Delimita visualmente os veiculos retornados pela busca. Esta camada e
+    // somente visual: nao muda a coordenada real, o endereco ou a rota.
+    if (clientSearchActive) {
+      for (const point of visiblePoints) {
+        if (point.type !== "client") continue;
+        const markerPosition = point.clientId ? clientMarkerPositions.get(point.clientId) : undefined;
+        const lat = markerPosition?.lat ?? point.lat;
+        const lng = markerPosition?.lng ?? point.lng;
+        const polygon = Array.from({ length: 11 }, (_, index) => {
+          const angle = (Math.PI * 2 * index) / 11;
+          // Oscilacao deterministica para produzir uma borda organica,
+          // sem movimentar a demarcacao a cada atualizacao do mapa.
+          const radius = 0.0072 * (0.78 + ((index * 37 + point.label.length * 11) % 29) / 100);
+          return [
+            lat + Math.sin(angle) * radius,
+            lng + Math.cos(angle) * radius / Math.max(0.35, Math.cos((lat * Math.PI) / 180)),
+          ] as [number, number];
+        });
+        L.polygon(polygon, {
+          color: "#7c3aed",
+          weight: 2,
+          opacity: 0.8,
+          dashArray: "8 6",
+          fillColor: "#a855f7",
+          fillOpacity: 0.16,
+          interactive: false,
+        }).addTo(layerGroup);
+      }
+    }
+
     for (const p of visiblePoints) {
-      const lat = p.lat;
-      const lng = p.lng;
+      const markerPosition = p.clientId ? clientMarkerPositions.get(p.clientId) : undefined;
+      const lat = markerPosition?.lat ?? p.lat;
+      const lng = markerPosition?.lng ?? p.lng;
 
       const isTech = p.type === "tech";
       const grad = isTech
@@ -900,6 +992,10 @@ export function RoteirizacaoMap({
         const bounds = L.latLngBounds(latlngs.map((p) => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
       }
+    } else if (preserveViewportOnNextMarkerUpdateRef.current) {
+      // Ao sair de uma busca, os marcadores voltam a aparecer sem deslocar o
+      // usuario para o enquadramento padrao do mapa.
+      preserveViewportOnNextMarkerUpdateRef.current = false;
     } else if (visiblePoints.length > 0) {
       const bounds = L.latLngBounds(visiblePoints.map((p) => [p.lat, p.lng]));
       map.fitBounds(bounds, { padding: [50, 50] });
@@ -927,21 +1023,6 @@ export function RoteirizacaoMap({
       }
     }
   }, []);
-
-  // Click map background (not on a marker) to deselect tech
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-    function onMapClick(e: L.LeafletMouseEvent) {
-      const target = e.originalEvent?.target as HTMLElement | null;
-      if (target?.closest?.(".leaflet-marker-icon")) return;
-      setSelectedTechId(null);
-      setSelectedClientId(null);
-      removeRoute();
-    }
-    map.on("click", onMapClick);
-    return () => map.off("click", onMapClick);
-  }, [mapReady]);
 
   // Refresh marker badges on zoom
   useEffect(() => {
@@ -998,6 +1079,42 @@ export function RoteirizacaoMap({
     const techIdsOnMap = new Set(points.filter((p) => p.type === "tech").map((p) => p.techId));
     return technicians.filter((t) => techIdsOnMap.has(t.id));
   }, [technicians, points]);
+
+  const shortcutSearchResults = useMemo<MapSearchResult[]>(() => {
+    const query = normalizeText(shortcutSearchQuery);
+    if (!query) return [];
+
+    const technicianMatches = visibleTechs
+      .filter((technician) => normalizeText(technician.nameOriginal).includes(query))
+      .slice(0, 5)
+      .map((technician) => ({ kind: "tech" as const, technician }));
+    const personMatches = findClientPeople(clients, query);
+    const clientMatches = clients
+      .filter((service) => {
+        const plate = normalizeText(service.plateOriginal || "");
+        const client = normalizeText(service.responsibleOriginal || "");
+        return plate.includes(query) || client.includes(query);
+      })
+      .slice(0, 5)
+      .map((service) => ({ kind: "client" as const, service }));
+
+    return [...technicianMatches, ...personMatches, ...clientMatches];
+  }, [clients, shortcutSearchQuery, visibleTechs]);
+
+  const topSearchResults = useMemo<MapSearchResult[]>(() => {
+    const query = normalizeText(topSearchQuery);
+    if (!query) return [];
+    const technicianMatches = visibleTechs
+      .filter((technician) => normalizeText(technician.nameOriginal).includes(query))
+      .slice(0, 5)
+      .map((technician) => ({ kind: "tech" as const, technician }));
+    const personMatches = findClientPeople(clients, query);
+    const clientMatches = clients
+      .filter((service) => normalizeText(service.plateOriginal || "").includes(query) || normalizeText(service.responsibleOriginal || "").includes(query))
+      .slice(0, 5)
+      .map((service) => ({ kind: "client" as const, service }));
+    return [...technicianMatches, ...personMatches, ...clientMatches];
+  }, [clients, topSearchQuery, visibleTechs]);
 
   const handleTechSelect = useCallback((tech: Technician) => {
     const map = mapInstanceRef.current;
@@ -1073,10 +1190,99 @@ export function RoteirizacaoMap({
   }, [points]);
 
   const handleClearClientFilter = useCallback(() => {
+    preserveViewportOnNextMarkerUpdateRef.current = true;
     setClientSearchActive(false);
     setClientFilterIds(new Set());
     setRenderTick((t) => t + 1);
     pendingZoomRef.current = null;
+  }, []);
+
+  // Um clique em uma area vazia encerra a busca de cliente e restaura o mapa
+  // completo. Cliques nos icones continuam abrindo o respectivo detalhe.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    function onMapClick(event: L.LeafletMouseEvent) {
+      const target = event.originalEvent?.target as HTMLElement | null;
+      if (target?.closest?.(".leaflet-marker-icon, .leaflet-popup, .leaflet-control")) return;
+      setSelectedTechId(null);
+      setSelectedClientId(null);
+      removeRoute();
+      if (clientSearchActive) handleClearClientFilter();
+    }
+    map.on("click", onMapClick);
+    return () => map.off("click", onMapClick);
+  }, [clientSearchActive, handleClearClientFilter, mapReady]);
+
+  const selectShortcutResult = useCallback((result: MapSearchResult) => {
+    if (result.kind === "tech") {
+      handleTechSelect(result.technician);
+    } else if (result.kind === "client") {
+      handlePlateSelect(result.service);
+    } else {
+      handleClientFilter(result.name, result.recordIds, result.recordIds);
+    }
+    setShortcutSearchQuery("");
+    setShortcutSearchOpen(false);
+  }, [handleClientFilter, handlePlateSelect, handleTechSelect]);
+
+  const selectTopSearchResult = useCallback((result: MapSearchResult) => {
+    selectShortcutResult(result);
+    setTopSearchQuery("");
+    setTopSearchOpen(false);
+  }, [selectShortcutResult]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+        event.preventDefault();
+        setShortcutSearchOpen(true);
+        setShortcutDialogPosition(null);
+        window.setTimeout(() => shortcutSearchRef.current?.focus(), 0);
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (!shortcutSearchOpen) return;
+    const closeWhenClickingOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (shortcutDialogRef.current?.contains(target)) return;
+      setShortcutSearchOpen(false);
+      setShortcutSearchQuery("");
+    };
+    document.addEventListener("mousedown", closeWhenClickingOutside);
+    return () => document.removeEventListener("mousedown", closeWhenClickingOutside);
+  }, [shortcutSearchOpen]);
+
+  const startShortcutDialogDrag = useCallback((event: import("react").MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const mapElement = mapRef.current;
+    const dialog = shortcutDialogRef.current;
+    if (!mapElement || !dialog) return;
+
+    const mapRect = mapElement.getBoundingClientRect();
+    const dialogRect = dialog.getBoundingClientRect();
+    const offsetX = event.clientX - dialogRect.left;
+    const offsetY = event.clientY - dialogRect.top;
+
+    const move = (moveEvent: MouseEvent) => {
+      const maxX = Math.max(8, mapRect.width - dialogRect.width - 8);
+      const maxY = Math.max(8, mapRect.height - dialogRect.height - 8);
+      setShortcutDialogPosition({
+        x: Math.max(8, Math.min(moveEvent.clientX - mapRect.left - offsetX, maxX)),
+        y: Math.max(8, Math.min(moveEvent.clientY - mapRect.top - offsetY, maxY)),
+      });
+    };
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
   }, []);
 
   // Clear client filter when focusing on tech or plate search
@@ -1098,15 +1304,37 @@ export function RoteirizacaoMap({
   return (
     <div className="flex gap-3">
       <div className="flex-1 min-w-0 space-y-1 overflow-hidden">
-        <div ref={searchAreaRef} className="flex flex-col sm:flex-row gap-2">
-          <div className="flex-1 min-w-0" data-search="tech">
-            <TechSearch technicians={visibleTechs} onSelect={handleTechSelect} />
-          </div>
-          <div className="flex-1 min-w-0" data-search="plate">
-            <PlateSearch clients={clients} onSelect={handlePlateSelect} />
-          </div>
-          <div className="flex-1 min-w-0" data-search="client">
-            <ClientSearch clients={clients} onSelectVehicle={handlePlateSelect} onFilterPerson={handleClientFilter} onClearFilter={handleClearClientFilter} />
+        <div ref={searchAreaRef} className="relative">
+          <div className="relative z-[1000]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={topSearchQuery}
+              onChange={(event) => { setTopSearchQuery(event.target.value); setTopSearchOpen(true); }}
+              onFocus={() => setTopSearchOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") { setTopSearchOpen(false); setTopSearchQuery(""); }
+                if (event.key === "Enter" && topSearchResults[0]) { event.preventDefault(); selectTopSearchResult(topSearchResults[0]); }
+              }}
+              placeholder="Buscar técnico, cliente ou placa..."
+              className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            {topSearchOpen && topSearchQuery && (
+              <div className="absolute inset-x-0 top-full mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover shadow-lg">
+                {topSearchResults.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado encontrado.</p>
+                ) : topSearchResults.map((result) => (
+                  <button
+                    key={result.kind === "tech" ? `top-tech-${result.technician.id}` : result.kind === "clientPerson" ? `top-person-${result.name}` : `top-client-${result.service.id}`}
+                    type="button"
+                    onMouseDown={() => selectTopSearchResult(result)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
+                  >
+                    <span>{result.kind === "tech" ? result.technician.nameOriginal : result.kind === "clientPerson" ? result.name : result.service.responsibleOriginal}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{result.kind === "tech" ? "Técnico" : result.kind === "clientPerson" ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}` : result.service.plateOriginal || "Cliente"}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="relative">
@@ -1120,6 +1348,75 @@ export function RoteirizacaoMap({
             }}
             className="border"
           />
+          {shortcutSearchOpen && (
+            <div
+              ref={shortcutDialogRef}
+              className="absolute z-[1200] w-[min(28rem,calc(100%-2rem))] overflow-hidden rounded-lg border bg-popover shadow-xl"
+              style={shortcutDialogPosition
+                ? { left: shortcutDialogPosition.x, top: shortcutDialogPosition.y }
+                : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div
+                onMouseDown={startShortcutDialogDrag}
+                className="flex cursor-grab items-center gap-2 border-b bg-muted px-3 py-2 text-sm font-medium active:cursor-grabbing"
+              >
+                <GripVertical className="h-4 w-4 text-muted-foreground" />
+                <span className="flex-1">Localizar no mapa</span>
+                <span className="text-xs font-normal text-muted-foreground">Ctrl + L</span>
+                <button
+                  type="button"
+                  aria-label="Fechar busca"
+                  className="rounded p-1 hover:bg-accent"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={() => { setShortcutSearchOpen(false); setShortcutSearchQuery(""); }}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="p-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    ref={shortcutSearchRef}
+                    value={shortcutSearchQuery}
+                    onChange={(event) => setShortcutSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setShortcutSearchOpen(false);
+                        setShortcutSearchQuery("");
+                      }
+                      if (event.key === "Enter" && shortcutSearchResults[0]) {
+                        event.preventDefault();
+                        selectShortcutResult(shortcutSearchResults[0]);
+                      }
+                    }}
+                    placeholder="Buscar técnico, cliente ou placa..."
+                    className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                {shortcutSearchQuery && (
+                  <div className="mt-2 max-h-64 overflow-y-auto rounded border">
+                    {shortcutSearchResults.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado encontrado.</p>
+                    ) : shortcutSearchResults.map((result) => (
+                      <button
+                        key={result.kind === "tech" ? `tech-${result.technician.id}` : result.kind === "clientPerson" ? `person-${result.name}` : `client-${result.service.id}`}
+                        type="button"
+                        onMouseDown={() => selectShortcutResult(result)}
+                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
+                      >
+                        <span>{result.kind === "tech" ? result.technician.nameOriginal : result.kind === "clientPerson" ? result.name : result.service.responsibleOriginal}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {result.kind === "tech" ? "Técnico" : result.kind === "clientPerson" ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}` : result.service.plateOriginal || "Cliente"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {selectedTech && (
             <div className="absolute top-3 left-3 z-[1000] flex gap-1 bg-background/95 border rounded-md p-1.5 shadow-md">
               <input
