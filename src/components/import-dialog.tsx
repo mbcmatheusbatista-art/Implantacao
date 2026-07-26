@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, ClipboardPaste } from "lucide-react";
+import { ArrowRight, Upload, ClipboardPaste } from "lucide-react";
 import type { FieldKey, ImportKind } from "@/types";
 import { parseExcelFile, rowsToObjects } from "@/services/excel-parser";
 import { parsePastedData, parsePastedHtmlData } from "@/services/pasted-data-parser";
@@ -27,7 +27,7 @@ import { autoMapColumns, detectHeaderRow, fieldsForKind } from "@/services/colum
 
 const FIELD_LABELS: Record<FieldKey, string> = {
   plate: "Placa",
-  responsible: "Nome do responsável",
+  responsible: "Responsável",
   phone: "Telefone",
   matrix: "Matriz",
   address: "Endereço",
@@ -40,6 +40,18 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   dataHora: "Data e hora",
   observations: "Observações / Particularidades",
 };
+
+const CORE_FIELDS: Record<ImportKind, FieldKey[]> = {
+  initial: ["plate", "responsible", "phone", "matrix"],
+  confirmed: ["plate", "responsible", "phone", "address", "equipment", "status"],
+  technicians: ["technician", "phone", "city", "state"],
+};
+
+function captureFieldLabel(kind: ImportKind, field: FieldKey) {
+  if (kind === "initial" && field === "responsible") return "Responsável (condutor)";
+  if (kind === "initial" && field === "phone") return "Telefone (contato)";
+  return FIELD_LABELS[field];
+}
 
 const DIALOG_DEBUG = true;
 
@@ -84,7 +96,12 @@ export function ImportDialog({
   const [mapping, setMapping] = useState<Partial<Record<FieldKey, string>>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const requiredFields = useMemo(() => fieldsForKind(kind), [kind]);
+  const allFields = useMemo(() => fieldsForKind(kind), [kind]);
+  const requiredFields = useMemo(() => CORE_FIELDS[kind], [kind]);
+  const optionalFields = useMemo(
+    () => allFields.filter((field) => !requiredFields.includes(field)),
+    [allFields, kind, requiredFields],
+  );
 
   function resetState() {
     setTab(initialTab);
@@ -104,6 +121,19 @@ export function ImportDialog({
     const { headers, data } = rowsToObjects(rawRows, headerRow);
     return { headers, dataObjects: data };
   }, [rawRows, headerRow]);
+
+  const pastedCapturePreview = useMemo(() => {
+    if (!pastedText.trim() || rawRows.length > 0) return {} as Partial<Record<FieldKey, string>>;
+    const rows = pastedRowsWithFormatting ?? parsePastedData(pastedText);
+    if (rows.length === 0) return {} as Partial<Record<FieldKey, string>>;
+    const detectedHeaderRow = detectHeaderRow(rows, kind);
+    const pastedHeaders = (rows[detectedHeaderRow] ?? []).map((value, index) => String(value ?? "").trim() || `Coluna ${index + 1}`);
+    const detected = autoMapColumns(pastedHeaders);
+    const allowedFields = new Set(allFields);
+    return Object.fromEntries(
+      Object.entries(detected).filter(([field]) => allowedFields.has(field as FieldKey)),
+    ) as Partial<Record<FieldKey, string>>;
+  }, [allFields, kind, pastedRowsWithFormatting, pastedText, rawRows.length]);
 
   async function handleFile(file: File) {
     try {
@@ -203,30 +233,37 @@ export function ImportDialog({
   }
 
   function handleConfirm() {
-    const missing = requiredFields.filter((f) => !mapping[f]);
+    const directPasteRows = rawRows.length > 0
+      ? rawRows
+      : (pastedRowsWithFormatting ?? parsePastedData(pastedText));
+    const effectiveHeaderRow = rawRows.length > 0 ? headerRow : detectHeaderRow(directPasteRows, kind);
+    const effectiveDataObjects = rawRows.length > 0
+      ? dataObjects
+      : rowsToObjects(directPasteRows, effectiveHeaderRow).data;
+    const effectiveMapping = rawRows.length > 0 ? mapping : pastedCapturePreview;
+    const missing = requiredFields.filter((f) => !effectiveMapping[f]);
     debugDialog("confirm:click", {
       kind,
-      fileName,
+      fileName: fileName || "Dados colados",
       selectedSheet,
-      headerRow,
-      mapping,
+      headerRow: effectiveHeaderRow,
+      mapping: effectiveMapping,
       requiredFields,
       missing,
-      dataObjectsCount: dataObjects.length,
-      dataObjectsPreview: dataObjects.slice(0, 20),
+      dataObjectsCount: effectiveDataObjects.length,
+      dataObjectsPreview: effectiveDataObjects.slice(0, 20),
     });
-    // For technicians and confirmed only phone/plate/name are strictly needed to proceed
-    if (missing.length === requiredFields.length) {
-      toast.error("Mapeie ao menos uma coluna reconhecida.");
+    if (missing.length > 0) {
+      toast.error(`Escolha uma coluna para: ${missing.map((field) => FIELD_LABELS[field]).join(", ")}.`);
       return;
     }
     // Every card imports only the columns selected in this dialog. The full
     // row set is still passed separately for the one feature that needs it
     // (plate metadata), without changing the imported records themselves.
-    const selectedRows = dataObjects.map((row) => {
+    const selectedRows = effectiveDataObjects.map((row) => {
       const filteredRow: Record<string, string> = {};
-      for (const field of requiredFields) {
-        const column = mapping[field];
+      for (const field of allFields) {
+        const column = effectiveMapping[field];
         if (column) filteredRow[column] = row[column] ?? "";
       }
       return filteredRow;
@@ -236,13 +273,13 @@ export function ImportDialog({
       count: selectedRows.length,
       rowsPreview: selectedRows.slice(0, 20),
     });
-    onConfirm(selectedRows, mapping, fileName, headerRow, selectedSheet || undefined, dataObjects);
+    onConfirm(selectedRows, effectiveMapping, fileName || "Dados colados", effectiveHeaderRow, selectedSheet || undefined, effectiveDataObjects);
     onOpenChange(false);
     resetState();
     toast.success("Importação concluída.");
   }
 
-  const previewHeaders: string[] = requiredFields
+  const previewHeaders: string[] = allFields
     .map((f) => mapping[f])
     .filter((h): h is string => !!h);
   const preview = dataObjects.slice(0, 5);
@@ -355,6 +392,8 @@ export function ImportDialog({
                   });
                   setPastedRowsWithFormatting(null);
                   setPastedText(e.target.value);
+                  setRawRows([]);
+                  setMapping({});
                 }}
                 onPaste={(e) => {
                   const html = e.clipboardData.getData("text/html");
@@ -376,6 +415,8 @@ export function ImportDialog({
                       rowsPreview: rows.slice(0, 10),
                     });
                     setPastedRowsWithFormatting(rows);
+                    setRawRows([]);
+                    setMapping({});
                     setPastedText(
                       rows
                         .map((row) =>
@@ -395,6 +436,23 @@ export function ImportDialog({
               <Button onClick={handleAnalyzePaste} variant="secondary">
                 Analisar dados
               </Button>
+              {pastedText.trim().length > 0 && rawRows.length === 0 && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-primary animate-in fade-in slide-in-from-left-2 duration-500">
+                  <div className="flex items-center gap-2">
+                    <ArrowRight className="h-4 w-4 shrink-0 animate-pulse" />
+                    <span>Dados colados. Clique em <strong>“Analisar dados”</strong> para verificar as colunas capturadas e ajustá-las, se necessário.</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {requiredFields.map((field) => (
+                      <span key={field} className={`rounded-full border px-2 py-0.5 text-xs ${pastedCapturePreview[field] ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                        {pastedCapturePreview[field]
+                          ? `${captureFieldLabel(kind, field)}: “${pastedCapturePreview[field]}”`
+                          : `${captureFieldLabel(kind, field)}: não identificada`}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 
@@ -444,10 +502,31 @@ export function ImportDialog({
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold">Colunas obrigatórias</p>
+                  <p className="text-xs text-muted-foreground">Escolha abaixo qual coluna da planilha preenche cada campo. O nome do cabeçalho pode ser diferente: selecione a coluna que contém os dados corretos nas linhas. A seleção será usada em todo o sistema após a importação.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {requiredFields.map((field) => (
+                    <span key={`required-${field}`} className="rounded bg-foreground px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-background">
+                      {FIELD_LABELS[field]}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {requiredFields.map((field) => (
+                    <span key={field} className={`rounded-full border px-2 py-1 text-xs ${mapping[field] ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                      {mapping[field] ? `${captureFieldLabel(kind, field)} capturando a coluna “${mapping[field]}”` : `${captureFieldLabel(kind, field)}: escolha uma coluna`}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {requiredFields.map((f) => (
-                  <div key={f}>
-                    <Label>{mapping[f] || FIELD_LABELS[f]}</Label>
+                  <div key={f} className="space-y-1.5">
+                    <Label>{FIELD_LABELS[f]}</Label>
                     <Select
                       value={mapping[f] ?? "__none__"}
                       onValueChange={(v) => {
@@ -476,9 +555,30 @@ export function ImportDialog({
                 ))}
               </div>
 
-              <p className="text-xs text-muted-foreground">
+              <p className="hidden text-xs text-muted-foreground">
                 Escolha as colunas que deseja capturar. A prÃ©-visualizaÃ§Ã£o e a importaÃ§Ã£o usarÃ£o somente estas colunas.
               </p>
+
+              {optionalFields.length > 0 && (
+                <details className="rounded-md border px-3 py-2">
+                  <summary className="cursor-pointer text-sm font-medium">Campos adicionais opcionais</summary>
+                  <p className="mt-1 text-xs text-muted-foreground">Use somente se sua planilha também possuir essas informações.</p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {optionalFields.map((f) => (
+                      <div key={f} className="space-y-1.5">
+                        <Label>{FIELD_LABELS[f]}</Label>
+                        <Select value={mapping[f] ?? "__none__"} onValueChange={(v) => setMapping((m) => ({ ...m, [f]: v === "__none__" ? undefined : v }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">— não capturar —</SelectItem>
+                            {headers.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
 
               <div>
                 <Label>Pré-visualização ({dataObjects.length} linhas)</Label>
@@ -526,7 +626,7 @@ export function ImportDialog({
           >
             Cancelar
           </Button>
-          <Button onClick={handleConfirm} disabled={dataObjects.length === 0}>
+          <Button onClick={handleConfirm} disabled={dataObjects.length === 0 && !pastedText.trim()}>
             Confirmar importação
           </Button>
         </DialogFooter>

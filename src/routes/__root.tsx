@@ -103,10 +103,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:description", content: "Ferramenta local para organizar contatos, técnicos e agendamentos da Creare Sistemas." },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d3d68fac-6c21-4cdd-80b6-c8eff7f8d0e0/id-preview-08b08a96--08cffd64-cdac-4109-8985-67672ba4ef37.lovable.app-1783748026806.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d3d68fac-6c21-4cdd-80b6-c8eff7f8d0e0/id-preview-08b08a96--08cffd64-cdac-4109-8985-67672ba4ef37.lovable.app-1783748026806.png" },
+      { title: "Assistente implantação" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/assistente-implantacao.svg", type: "image/svg+xml" },
     ],
   }),
   shellComponent: RootShell,

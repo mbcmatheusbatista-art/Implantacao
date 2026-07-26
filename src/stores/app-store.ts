@@ -31,6 +31,10 @@ interface AppState {
   setInitialContacts: (r: InitialContact[], meta: ImportMeta, diag: ImportDiagnostic) => void;
   setConfirmedServices: (r: ConfirmedService[], meta: ImportMeta, diag: ImportDiagnostic) => void;
   setTechnicians: (r: Technician[], meta: ImportMeta, diag: ImportDiagnostic) => void;
+  replaceImportRecords: (
+    kind: ImportKind,
+    records: InitialContact[] | ConfirmedService[] | Technician[],
+  ) => void;
 
   toggleContacted: (id: string) => void;
   assign: (
@@ -88,6 +92,21 @@ export const useAppStore = create<AppState>((set) => ({
     }));
     saveToDb("technicians", fixed).catch(() => {});
     saveToDb("diagnostics", { technicians: diag }).catch(() => {});
+  },
+  replaceImportRecords: (kind, records) => {
+    set((s) => {
+      const count = records.length;
+      const nextMeta = s.meta[kind]
+        ? { ...s.meta, [kind]: { ...s.meta[kind]!, count } }
+        : s.meta;
+      if (kind === "initial") return { initialContacts: records as InitialContact[], meta: nextMeta };
+      if (kind === "confirmed") return { confirmedServices: records as ConfirmedService[], meta: nextMeta };
+      return { technicians: records as Technician[], meta: nextMeta };
+    });
+    const key = kind === "initial" ? "initialContacts" : kind === "confirmed" ? "confirmedServices" : "technicians";
+    saveToDb(key, records).catch(() => {});
+    const { meta } = useAppStore.getState();
+    saveToDb("meta", meta).catch(() => {});
   },
 
   toggleContacted: (id) => {

@@ -17,7 +17,7 @@ import { ImportDialog } from "@/components/import-dialog";
 import { buildConfirmedServices } from "@/services/build-records";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { equipmentLabel } from "@/utils/normalize-equipment";
-import { normalizeText } from "@/utils/normalize-text";
+import { normalizeText, stripFormatMarkers } from "@/utils/normalize-text";
 import { findFixedTechnicianLocationByName } from "@/services/seed-data";
 
 export const Route = createFileRoute("/atendimentos")({
@@ -26,12 +26,24 @@ export const Route = createFileRoute("/atendimentos")({
 
 type Filter = "all" | "with_address" | "no_address" | "s8_eco" | "s8_eco_g5" | "unassigned" | "agendado" | "agendando" | "agendar";
 
+const KNOWN_TECHNICIAN_PHONES: Record<string, string> = {
+  "DIEGO SOUZA BALDUINO": "18 99751-4360",
+};
+
+const ALL_STATUSES = "__all_statuses__";
+
+function hasUsableAddress(address: string | undefined): boolean {
+  const normalized = normalizeText(address);
+  return Boolean(normalized) && !["SEM ENDERECO", "NAO INFORMADO", "N A", "-", "—"].includes(normalized);
+}
+
 function ConfirmedServicesPage() {
   const store = useAppStore();
   const services = store.confirmedServices;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
   const importedColumns = store.diagnostics.confirmed?.columnsMapped ?? {};
   const columnLabel = (field: "plate" | "responsible" | "phone" | "address" | "equipment" | "status" | "technician", fallback: string) =>
     importedColumns[field] || fallback;
@@ -39,6 +51,15 @@ function ConfirmedServicesPage() {
   const assignedIds = useMemo(
     () => new Set(store.assignments.map((a) => a.serviceId)),
     [store.assignments],
+  );
+  const statusOptions = useMemo(
+    () =>
+      [...new Set(
+        services
+          .map((service) => stripFormatMarkers(service.serviceStatusOriginal || service.serviceStatus || "").trim())
+          .filter(Boolean),
+      )].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [services],
   );
 
   const filtered = useMemo(() => {
@@ -60,11 +81,13 @@ function ConfirmedServicesPage() {
           .toLocaleLowerCase("pt-BR");
         if (!hay.includes(q)) return false;
       }
+      const displayedStatus = stripFormatMarkers(s.serviceStatusOriginal || s.serviceStatus || "").trim();
+      if (statusFilter !== ALL_STATUSES && displayedStatus !== statusFilter) return false;
       switch (filter) {
         case "with_address":
-          return !!s.fullAddress;
+          return hasUsableAddress(s.fullAddress);
         case "no_address":
-          return !s.fullAddress;
+          return !hasUsableAddress(s.fullAddress);
         case "s8_eco":
           return s.equipmentNormalized === "S8_ECO";
         case "s8_eco_g5":
@@ -81,7 +104,7 @@ function ConfirmedServicesPage() {
           return true;
       }
     });
-  }, [services, search, filter, assignedIds]);
+  }, [services, search, filter, statusFilter, assignedIds]);
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
@@ -137,6 +160,17 @@ function ConfirmedServicesPage() {
                 <SelectItem value="agendar">AGENDAR</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="max-w-xs">
+                <SelectValue placeholder="Filtrar por status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_STATUSES}>Todos os status</SelectItem>
+                {statusOptions.map((status) => (
+                  <SelectItem key={status} value={status}>{status}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Badge variant="secondary">{filtered.length} exibidos</Badge>
           </CardHeader>
           <CardContent>
@@ -144,15 +178,19 @@ function ConfirmedServicesPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted">
                   <tr className="text-left">
+                    <th className="p-2">{columnLabel("status", "Status")}</th>
                     <th className="p-2">{columnLabel("plate", "Placa")}</th>
                     <th className="p-2">{columnLabel("responsible", "Responsável")}</th>
                     <th className="p-2">{columnLabel("phone", "Telefone")}</th>
                     <th className="p-2">{columnLabel("address", "Endereço")}</th>
                     <th className="p-2">Cidade/UF</th>
                     <th className="p-2">{columnLabel("equipment", "Equipamento")}</th>
-                    <th className="p-2">{columnLabel("status", "Status")}</th>
-                    <th className="p-2">{columnLabel("technician", "Possível técnico")}</th>
-                    <th className="p-2 text-center">!WPP Técnicos!</th>
+                    <th className="p-2 bg-violet-100 text-violet-950 border-l border-violet-200">
+                      {columnLabel("technician", "Possível técnico")}
+                    </th>
+                    <th className="p-2 text-center bg-violet-100 text-violet-950 border-r border-violet-200">
+                      WhatsApp técnico
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,13 +223,54 @@ function ConfirmedServicesPage() {
                     const t = [assignedTech, ...nameMatches].filter(Boolean).find((x) =>
                       Boolean(x?.phoneNormalized || x?.phoneOriginal || x?.allPhones?.length),
                     ) ?? assignedTech ?? nameMatches[0] ?? null;
+                    const contactMatches = normalizedName
+                      ? store.initialContacts.filter((contact) => {
+                          const candidate = normalizeText(contact.responsibleOriginal);
+                          return candidate.includes(normalizedName) || normalizedName.includes(candidate);
+                        })
+                      : [];
+                    const technicianPhoneSource = [t, ...contactMatches].find((contact) =>
+                      Boolean(contact?.phoneNormalized || contact?.phoneOriginal || contact?.allPhones?.length),
+                    ) ?? null;
+                    const matchingTechnicianNotes = normalizedName
+                      ? services
+                          .map((service) => service.technicianOriginal ?? "")
+                          .filter((value) => {
+                            const candidate = normalizeText(value);
+                            return candidate.includes(normalizedName) || normalizedName.includes(candidate);
+                          })
+                      : [];
+                    const knownTechnicianPhone = KNOWN_TECHNICIAN_PHONES[normalizedName] ?? "";
                     const fixedLocation = findFixedTechnicianLocationByName(cleanName, t?.state ?? "");
                     const technicianAddress = fixedLocation?.address || t?.address || "";
-                    const googleMapsRoute = s.fullAddress
+                    const hasAddress = hasUsableAddress(s.fullAddress);
+                    const isFinalized =
+                      s.serviceStatus === "FINALIZADO" ||
+                      normalizeText(s.serviceStatusOriginal) === "FINALIZADO";
+                    const googleMapsRoute = hasAddress
                       ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.fullAddress)}${technicianAddress ? `&destination=${encodeURIComponent(technicianAddress)}` : ""}`
                       : null;
                     return (
-                      <tr key={s.id} className="border-t hover:bg-muted/30">
+                      <tr
+                        key={s.id}
+                        className={`border-t ${
+                          isFinalized
+                            ? "bg-emerald-700 text-white hover:bg-emerald-700 [&>td]:!bg-emerald-700 [&>td]:!text-white [&>td]:border-emerald-600"
+                            : "hover:bg-muted/30"
+                        }`}
+                      >
+                        <td className="p-2">
+                          <Badge
+                            className={`text-[10px] ${
+                              s.serviceStatus === "AGENDADO" ? "bg-blue-600 hover:bg-blue-700" :
+                              s.serviceStatus === "AGENDAR" ? "bg-orange-500 hover:bg-orange-600" :
+                              s.serviceStatus === "AGENDANDO" ? "bg-black hover:bg-gray-900" :
+                              isFinalized ? "!bg-white !text-emerald-700 hover:!bg-emerald-50" : ""
+                            }`}
+                          >
+                            {s.serviceStatusOriginal || s.serviceStatus || "—"}
+                          </Badge>
+                        </td>
                         <td className="p-2 font-mono text-xs">{s.plateOriginal || "—"}</td>
                         <td className="p-2">
                           {(() => {
@@ -237,11 +316,14 @@ function ConfirmedServicesPage() {
                             );
                           })()}
                         </td>
-                        <td className="p-2 max-w-xs truncate" title={googleMapsRoute ? "Abrir rota no Google Maps" : s.fullAddress}>
+                        <td
+                          className={`p-2 max-w-xs truncate ${hasAddress ? "" : "bg-red-600 text-white font-medium"}`}
+                          title={googleMapsRoute ? "Abrir rota no Google Maps" : "Endereço não informado"}
+                        >
                           {(() => {
                             const cleaned = (s.fullAddress ?? "").replace(/\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g, "").trim();
-                            const text = cleaned || "sem endereço";
-                            return googleMapsRoute ? <a href={googleMapsRoute} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{text}</a> : text;
+                            const text = hasAddress ? cleaned : "Sem endereço";
+                            return googleMapsRoute ? <a href={googleMapsRoute} target="_blank" rel="noopener noreferrer" className={isFinalized ? "text-white hover:underline" : "text-primary hover:underline"}>{text}</a> : text;
                           })()}
                         </td>
                         <td className="p-2 text-xs">
@@ -254,23 +336,12 @@ function ConfirmedServicesPage() {
                                 ? "destructive"
                                 : "outline"
                             }
+                            className={isFinalized ? "!border-white/70 !bg-transparent !text-white" : undefined}
                           >
                             {equipmentLabel(s.equipmentNormalized)}
                           </Badge>
                         </td>
-                        <td className="p-2">
-                          <Badge
-                            className={`text-[10px] ${
-                              s.serviceStatus === "AGENDADO" ? "bg-blue-600 hover:bg-blue-700" :
-                              s.serviceStatus === "AGENDAR" ? "bg-orange-500 hover:bg-orange-600" :
-                              s.serviceStatus === "AGENDANDO" ? "bg-black hover:bg-gray-900" :
-                              ""
-                            }`}
-                          >
-                            {s.serviceStatus || "—"}
-                          </Badge>
-                        </td>
-                        <td className="p-2 text-xs font-medium">
+                        <td className="p-2 text-xs font-medium bg-violet-50/70 border-l border-violet-100">
                           {(() => {
                             const tech = t || (cleanName ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim())) : null);
                             const name = tech ? (tech.firstName || tech.nameOriginal) : cleanName;
@@ -288,16 +359,18 @@ function ConfirmedServicesPage() {
                             return name;
                           })()}
                         </td>
-                        <td className="p-2 text-center">
+                        <td className="p-2 text-center bg-violet-50/70 border-r border-violet-100">
                           <div className="flex items-center justify-center gap-1.5">
                             {(() => {
                               const tech = t || (cleanName ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim())) : null);
                               const name = tech ? (tech.firstName || tech.nameOriginal) : cleanName;
                               const phoneRaw = [
-                                tech?.phoneNormalized,
-                                tech?.phoneOriginal,
-                                tech?.allPhones?.join("/"),
+                                technicianPhoneSource?.phoneNormalized,
+                                technicianPhoneSource?.phoneOriginal,
+                                technicianPhoneSource?.allPhones?.join("/"),
                                 technicianNotePhone,
+                                ...matchingTechnicianNotes,
+                                knownTechnicianPhone,
                                 !tech ? cleanName : "",
                               ].filter(Boolean).join("/");
                               const phoneParts = phoneRaw ? phoneRaw.split("/").map(p => p.trim()).filter(Boolean) : [];

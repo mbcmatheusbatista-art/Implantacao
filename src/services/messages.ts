@@ -12,20 +12,20 @@ export interface MessageTemplates {
 export const DEFAULT_TEMPLATES: MessageTemplates = {
   responsibleSingle: `Olá, {saudacao}, {primeiro_nome}!
 Meu nome é Matheus, trabalho na Creare Sistemas.
-Gostaria de verificar contigo se o veículo de placa {placa} é de sua responsabilidade.
+Gostaria de verificar contigo se o veículo de placa *{placa}* é de sua responsabilidade.
 Se sim, poderia, por gentileza, confirmar os seguintes dados para agendarmos a instalação da telemetria e do videomonitoramento?
-• Endereço completo da instalação:
-• Data:
-• Horário disponível:
+• *Endereço completo da instalação:*
+• *Data:*
+• *Horário disponível:*
 Até mais!`,
   responsibleMultiple: `Olá, {saudacao}, {primeiro_nome}!
 Meu nome é Matheus, trabalho na Creare Sistemas.
 Gostaria de verificar contigo se os veículos das placas abaixo são de sua responsabilidade:
 {placas}
 Se sim, poderia, por gentileza, confirmar os seguintes dados para agendarmos a instalação da telemetria e do videomonitoramento?
-• Endereço completo da instalação:
-• Data:
-• Horário disponível:
+• *Endereço completo da instalação:*
+• *Data:*
+• *Horário disponível:*
 Até mais!`,
   technicianSingle: `Olá, {saudacao}, {primeiro_nome_tecnico}!
 Meu nome é Matheus, trabalho na Creare Sistemas e gostaria de verificar contigo a disponibilidade para realizar uma instalação de {equipamento}.
@@ -101,16 +101,29 @@ export function buildResponsibleMessage(
   const plates =
     contact.plates.length > 0 ? contact.plates : [contact.plateOriginal].filter(Boolean);
   if (plates.length <= 1) {
-    return templates.responsibleSingle
+    return emphasizeResponsibleMessage(
+      templates.responsibleSingle
       .replaceAll("{saudacao}", greeting)
       .replaceAll("{primeiro_nome}", nameOrHello)
-      .replaceAll("{placa}", plates[0] ?? "");
+      .replaceAll("{placa}", plates[0] ?? ""),
+    );
   }
-  const list = plates.map((p) => `• ${p}`).join("\n");
-  return templates.responsibleMultiple
+  const list = plates.map((p) => `• *${p}*`).join("\n");
+  return emphasizeResponsibleMessage(
+    templates.responsibleMultiple
     .replaceAll("{saudacao}", greeting)
     .replaceAll("{primeiro_nome}", nameOrHello)
-    .replaceAll("{placas}", list);
+    .replaceAll("{placas}", list),
+  );
+}
+
+function emphasizeResponsibleMessage(message: string): string {
+  return message
+    .replace(
+      /(veículo de placa )([^*\n]+?)( é de sua responsabilidade\.)/i,
+      "$1*$2*$3",
+    )
+    .replace(/^• (Endereço completo da instalação:|Data:|Horário disponível:)$/gim, "• *$1*");
 }
 
 export interface TechnicianMessageContext {

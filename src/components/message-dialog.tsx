@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Copy, MessageCircle, ExternalLink } from "lucide-react";
-import { buildWhatsAppUrl, copyToClipboard, openWhatsAppInReusableTab } from "@/utils/whatsapp-url";
+import { buildWhatsAppUrl, copyToClipboard } from "@/utils/whatsapp-url";
 
 const MESSAGE_DEBUG = true;
 
@@ -130,20 +130,6 @@ export function MessageDialog({ open, onOpenChange, message, phone, title, extra
     else toast.error("Não foi possível copiar.");
   }
 
-  function handleOpen() {
-    if (!url) {
-      debugMessage("dialog:open-failed-no-url", { manualPhone, textPreview: text.slice(0, 100) });
-      toast.error("Telefone inválido — não é possível abrir o WhatsApp. Verifique se o número tem DDD (ex: 51 99728-8666).");
-      return;
-    }
-    const w = openWhatsAppInReusableTab(url);
-    if (!w) {
-      toast.error(
-        "Não foi possível acionar o app do WhatsApp. Verifique se ele está instalado ou utilize o botão Copiar mensagem.",
-      );
-    }
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -169,17 +155,19 @@ export function MessageDialog({ open, onOpenChange, message, phone, title, extra
             <Copy className="w-4 h-4 mr-2" /> Copiar mensagem
           </Button>
           {url ? (
-            <Button
-              onClick={() => {
-                handleOpen();
-                onOpenChange(false);
-              }}
-            >
-              <MessageCircle className="w-4 h-4 mr-2" /> Abrir WhatsApp
-              <ExternalLink className="w-3 h-3 ml-2" />
+            <Button asChild>
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => onOpenChange(false)}
+              >
+                <MessageCircle className="w-4 h-4 mr-2" /> Abrir WhatsApp
+                <ExternalLink className="w-3 h-3 ml-2" />
+              </a>
             </Button>
           ) : (
-            <Button disabled onClick={handleOpen}>
+            <Button disabled>
               <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp indisponível
             </Button>
           )}

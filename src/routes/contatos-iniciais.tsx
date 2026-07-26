@@ -38,9 +38,7 @@ export const Route = createFileRoute("/contatos-iniciais")({
 });
 
 type FilterKind = "all" | "valid" | "invalid" | "single" | "multi";
-type MatrixFilter = "SGS ENGER" | "SGS DO BRASIL" | "SGS INDUSTRIAL";
-
-const MATRIX_OPTIONS: MatrixFilter[] = ["SGS ENGER", "SGS DO BRASIL", "SGS INDUSTRIAL"];
+type MatrixFilter = string;
 
 function InitialContactsPage() {
   const store = useAppStore();
@@ -57,11 +55,8 @@ function InitialContactsPage() {
     importedColumns[field] || fallback;
 
   function matrixFilterValue(matrix: string | undefined): MatrixFilter | null {
-    const normalized = (matrix ?? "").trim().toUpperCase();
-    if (normalized === "SGS ENGER") return "SGS ENGER";
-    if (normalized === "SGS DO BRASIL") return "SGS DO BRASIL";
-    if (normalized === "SGS INDUSTRIAL") return "SGS INDUSTRIAL";
-    return null;
+    const value = (matrix ?? "").trim();
+    return value || null;
   }
 
   const matrixOrder = useMemo(() => {
@@ -132,7 +127,7 @@ function InitialContactsPage() {
     setSelectedMatrices((current) =>
       matrixOrder.length > 0 && matrixOrder.every((matrix) => current.includes(matrix))
         ? []
-        : MATRIX_OPTIONS.filter((matrix) => matrixOrder.includes(matrix)),
+        : [...matrixOrder],
     );
   }
 
@@ -266,13 +261,12 @@ function InitialContactsPage() {
               >
                 Todas
               </Button>
-              {MATRIX_OPTIONS.map((matrix) => (
+              {matrixOrder.map((matrix) => (
                 <Button
                   key={matrix}
                   size="sm"
                   variant={selectedMatrices.includes(matrix) ? "default" : "outline"}
                   onClick={() => toggleMatrix(matrix)}
-                  disabled={!matrixOrder.includes(matrix)}
                 >
                   {matrix}
                 </Button>
@@ -289,7 +283,7 @@ function InitialContactsPage() {
                     <th className="p-2">{columnLabel("matrix", "Matriz")}</th>
                     <th className="p-2">{columnLabel("plate", "Placas")}</th>
                     <th className="p-2">Status</th>
-                    <th className="p-2 text-right">Ações</th>
+                    <th className="p-2 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -372,9 +366,14 @@ function InitialContactsPage() {
                           </div>
                         </td>
                         <td className="p-2">
-                          <div className="flex gap-1 justify-end">
-                            <Button size="sm" variant="outline" onClick={() => openMessage(c)}>
-                              Visualizar
+                          <div className="flex gap-1 justify-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title="Ver a prévia da mensagem antes de abrir o WhatsApp"
+                              onClick={() => openMessage(c)}
+                            >
+                              Prévia da mensagem
                             </Button>
                             {valid ? (
                               <Button
@@ -409,9 +408,10 @@ function InitialContactsPage() {
                             <Button
                               size="sm"
                               variant={copiedNameId === c.id ? "default" : "outline"}
+                              title="Copiar o nome formatado para salvar este contato no WhatsApp"
                               onClick={() => copyContactName(c)}
                             >
-                              {copiedNameId === c.id ? "Copiado" : "Nome"}
+                              {copiedNameId === c.id ? "Nome copiado" : "Copiar nome"}
                             </Button>
                           </div>
                         </td>
