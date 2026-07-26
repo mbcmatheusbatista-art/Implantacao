@@ -14,7 +14,8 @@ type DataKind =
   | "diagnostics"
   | "meta"
   | "checklist"
-  | "plateMeta";
+  | "plateMeta"
+  | "adminContacts";
 
 interface ImportMeta {
   fileName: string;

@@ -18,6 +18,7 @@ import { buildConfirmedServices } from "@/services/build-records";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { equipmentLabel } from "@/utils/normalize-equipment";
 import { normalizeText } from "@/utils/normalize-text";
+import { findFixedTechnicianLocationByName } from "@/services/seed-data";
 
 export const Route = createFileRoute("/atendimentos")({
   component: ConfirmedServicesPage,
@@ -31,6 +32,9 @@ function ConfirmedServicesPage() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const importedColumns = store.diagnostics.confirmed?.columnsMapped ?? {};
+  const columnLabel = (field: "plate" | "responsible" | "phone" | "address" | "equipment" | "status" | "technician", fallback: string) =>
+    importedColumns[field] || fallback;
 
   const assignedIds = useMemo(
     () => new Set(store.assignments.map((a) => a.serviceId)),
@@ -140,14 +144,14 @@ function ConfirmedServicesPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted">
                   <tr className="text-left">
-                    <th className="p-2">Placa</th>
-                    <th className="p-2">Responsável</th>
-                    <th className="p-2">Telefone</th>
-                    <th className="p-2">Endereço</th>
+                    <th className="p-2">{columnLabel("plate", "Placa")}</th>
+                    <th className="p-2">{columnLabel("responsible", "Responsável")}</th>
+                    <th className="p-2">{columnLabel("phone", "Telefone")}</th>
+                    <th className="p-2">{columnLabel("address", "Endereço")}</th>
                     <th className="p-2">Cidade/UF</th>
-                    <th className="p-2">Equipamento</th>
-                    <th className="p-2">Status</th>
-                    <th className="p-2">Possível técnico</th>
+                    <th className="p-2">{columnLabel("equipment", "Equipamento")}</th>
+                    <th className="p-2">{columnLabel("status", "Status")}</th>
+                    <th className="p-2">{columnLabel("technician", "Possível técnico")}</th>
                     <th className="p-2 text-center">!WPP Técnicos!</th>
                   </tr>
                 </thead>
@@ -181,6 +185,11 @@ function ConfirmedServicesPage() {
                     const t = [assignedTech, ...nameMatches].filter(Boolean).find((x) =>
                       Boolean(x?.phoneNormalized || x?.phoneOriginal || x?.allPhones?.length),
                     ) ?? assignedTech ?? nameMatches[0] ?? null;
+                    const fixedLocation = findFixedTechnicianLocationByName(cleanName, t?.state ?? "");
+                    const technicianAddress = fixedLocation?.address || t?.address || "";
+                    const googleMapsRoute = s.fullAddress
+                      ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.fullAddress)}${technicianAddress ? `&destination=${encodeURIComponent(technicianAddress)}` : ""}`
+                      : null;
                     return (
                       <tr key={s.id} className="border-t hover:bg-muted/30">
                         <td className="p-2 font-mono text-xs">{s.plateOriginal || "—"}</td>
@@ -201,9 +210,9 @@ function ConfirmedServicesPage() {
                                 <div className="font-medium">{cleanName}</div>
                                 {extraName && extraUrl && (
                                   <div className="flex items-center gap-1 mt-0.5 text-xs">
-                                    <span className="text-muted-foreground">está com {estaCom[2] || ""}</span>
+                                    <span className="text-destructive font-medium">está com {estaCom[2] || ""}</span>
                                     <a href={extraUrl} target="_blank" rel="noopener noreferrer">
-                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-6 px-2 text-[10px]">
+                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-5 px-1.5 text-[9px]">
                                         {extraName}
                                       </Button>
                                     </a>
@@ -228,10 +237,11 @@ function ConfirmedServicesPage() {
                             );
                           })()}
                         </td>
-                        <td className="p-2 max-w-xs truncate" title={s.fullAddress}>
+                        <td className="p-2 max-w-xs truncate" title={googleMapsRoute ? "Abrir rota no Google Maps" : s.fullAddress}>
                           {(() => {
                             const cleaned = (s.fullAddress ?? "").replace(/\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g, "").trim();
-                            return cleaned || "sem endereço";
+                            const text = cleaned || "sem endereço";
+                            return googleMapsRoute ? <a href={googleMapsRoute} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{text}</a> : text;
                           })()}
                         </td>
                         <td className="p-2 text-xs">

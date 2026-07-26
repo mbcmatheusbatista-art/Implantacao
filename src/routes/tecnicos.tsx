@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { useAppStore, getSessionLoads } from "@/stores/app-store";
+import { useAppStore } from "@/stores/app-store";
 import { ImportDialog } from "@/components/import-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,33 +27,17 @@ import {
   X,
 } from "lucide-react";
 import { buildTechnicians } from "@/services/build-records";
-import { stockStatusLabel, stripQuantityFormat } from "@/utils/parse-quantity";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { importarTecnicosEmLote } from "@/services/api";
 import { applySeedAddresses } from "@/services/seed-data";
 import { geocodeFullAddress } from "@/services/distance";
-import type { Technician, TechnicianStockStatus } from "@/types";
+import type { Technician } from "@/types";
 
 export const Route = createFileRoute("/tecnicos")({
   component: TechniciansPage,
 });
 
 type Filter = "all" | "available" | "no_stock" | "confirm" | "unknown";
-
-function statusVariant(
-  s: TechnicianStockStatus,
-): "default" | "destructive" | "secondary" | "outline" {
-  switch (s) {
-    case "DISPONIVEL":
-      return "default";
-    case "SEM_MATERIAL":
-      return "destructive";
-    case "CONFIRMAR":
-      return "secondary";
-    default:
-      return "outline";
-  }
-}
 
 const FORMAT_MARKER_RE = /\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g;
 
@@ -68,6 +52,9 @@ function TechniciansPage() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const importedColumns = store.diagnostics.technicians?.columnsMapped ?? {};
+  const columnLabel = (field: "technician" | "phone" | "city" | "state" | "address" | "quantity", fallback: string) =>
+    importedColumns[field] || fallback;
 
   // Correct legacy values already stored in the browser as soon as this page
   // opens. Matching by first name (for example the two Diegos) is never used.
@@ -90,39 +77,6 @@ function TechniciansPage() {
       store.diagnostics?.technicians || { fileName: "", columnsFound: [], columnsMapped: {}, columnsUnmapped: [], rowsImported: corrected.length, rowsSkipped: 0, invalidPhones: 0, emptyPlates: 0, emptyNames: 0, emptyAddresses: 0, equipmentUnknown: 0, quantityUnparsed: 0, groupedContacts: 0, nameConflicts: 0, timestamp: Date.now(), headerRow: 0 },
     );
   }, [techs, store]);
-
-  const loads = useMemo(() => getSessionLoads(store.assignments), [store.assignments]);
-
-  const doneCounts = useMemo(() => {
-    const m = new Map<string, { s8: number; g5: number }>();
-    const fmtRe = /\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g;
-    for (const svc of store.confirmedServices) {
-      const status = (svc.serviceStatus || svc.serviceStatusOriginal || "").toUpperCase();
-      if (status === "AGENDADO" || status === "FINALIZADO") {
-        let techName: string | null = null;
-        const a = store.assignments.find((x) => x.serviceId === svc.id);
-        if (a) {
-          const tech = store.technicians.find((x) => x.id === a.technicianId);
-          if (tech) techName = tech.nameOriginal.toLowerCase().trim();
-        } else if (svc.technicianOriginal) {
-          const raw = svc.technicianOriginal.replace(/\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g, "").trim().toLowerCase();
-          const tech = store.technicians.find((x) => raw.includes(x.nameOriginal.toLowerCase().trim()) || x.nameOriginal.toLowerCase().trim().includes(raw));
-          if (tech) techName = tech.nameOriginal.toLowerCase().trim();
-        }
-        if (techName) {
-          const current = m.get(techName) ?? { s8: 0, g5: 0 };
-          if (svc.equipmentNormalized === "S8_ECO") {
-            m.set(techName, { s8: current.s8 + 1, g5: current.g5 });
-          } else if (svc.equipmentNormalized === "S8_ECO_G5_PLUS") {
-            m.set(techName, { s8: current.s8 + 1, g5: current.g5 + 1 });
-          } else {
-            m.set(techName, { s8: current.s8 + 1, g5: current.g5 });
-          }
-        }
-      }
-    }
-    return m;
-  }, [store.confirmedServices, store.assignments, store.technicians]);
 
   const d1Active = useMemo(() => techs.some((t) => !!t.address), [techs]);
   const techsComEndereco = useMemo(() => techs.filter((t) => !!t.address), [techs]);
@@ -225,27 +179,15 @@ function TechniciansPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted">
                   <tr className="text-left">
-                    <th className="p-2">Nome</th>
-                    <th className="p-2">Celular</th>
-                    <th className="p-2">Cidade</th>
-                    <th className="p-2">UF</th>
-                    <th className="p-2">Endereço</th>
-                    <th className="p-2">Quantidade</th>
-                    <th className="p-2">Status</th>
-                    <th className="p-2">Sessão</th>
-                    <th className="p-2">Saldo estimado</th>
+                    <th className="p-2">{columnLabel("technician", "Nome")}</th>
+                    <th className="p-2">{columnLabel("phone", "Celular")}</th>
+                    <th className="p-2">{columnLabel("city", "Cidade")}</th>
+                    <th className="p-2">{columnLabel("state", "UF")}</th>
+                    <th className="p-2">{columnLabel("address", "Endereço")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((t) => {
-                    const load = loads.get(t.id) ?? 0;
-                    const key = t.nameOriginal.replace(/\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g, "").trim().toLowerCase();
-                    const done = doneCounts.get(key) ?? { s8: 0, g5: 0 };
-                    const eq = t.equipmentBreakdown;
-                    const isG5 = eq && eq.g5PlusSets > 0;
-                    const used = isG5 ? done.g5 : done.s8;
-                    const balance =
-                      t.availableQuantity !== null ? Math.max(0, t.availableQuantity - used) : null;
                     return(
                       <tr key={t.id} className="border-t hover:bg-muted/30">
                         <td className="p-2">{t.nameOriginal || "—"}</td>
@@ -259,6 +201,8 @@ function TechniciansPage() {
                                   <MessageCircle className="w-4 h-4" />
                                 </Button>
                               </a>
+                            ) : t.phoneOriginal ? (
+                              <span className="text-xs">{t.phoneOriginal}</span>
                             ) : (
                               <span className="text-destructive text-xs">—</span>
                             );
@@ -269,24 +213,6 @@ function TechniciansPage() {
                         <td className="p-2 max-w-48 truncate text-xs" title={t.address || ""}>
                           {t.address ? (
                             <span className="text-green-700 dark:text-green-400">{t.address}</span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="p-2 text-xs" title={t.quantityOriginal}>
-                          {t.quantityOriginal ? stripQuantityFormat(t.quantityOriginal) : "—"}
-                        </td>
-                        <td className="p-2">
-                          <Badge variant={statusVariant(t.stockStatus)}>
-                            {stockStatusLabel(t.stockStatus)}
-                          </Badge>
-                        </td>
-                        <td className="p-2 text-center">{load}</td>
-                        <td className="p-2">
-                          {balance !== null ? (
-                            <Badge variant={balance < 0 ? "destructive" : "outline"}>
-                              {balance}
-                            </Badge>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}

@@ -357,6 +357,8 @@ export function buildTechnicians(
   }
 
   const records: Technician[] = [];
+  // A company/technician may occur more than once with different contacts.
+  // Only the same name together with the same phone is a duplicate.
   const seen = new Map<string, Technician>();
   let imported = 0;
   let skipped = 0;
@@ -413,11 +415,15 @@ export function buildTechnicians(
     }
 
     const eqBreakdown = parseEquipmentQuantity(qRaw);
-    const normalizedNameKey = (nameRaw || "").trim().toLowerCase();
+    const normalizedNameKey = normalizeText(nameRaw);
+    const contactKey = phoneResult.primary || phoneRaw.replace(/\D/g, "");
+    const duplicateKey = normalizedNameKey && contactKey
+      ? `${normalizedNameKey}::${contactKey}`
+      : "";
 
-    if (normalizedNameKey && seen.has(normalizedNameKey)) {
+    if (duplicateKey && seen.has(duplicateKey)) {
       duplicatesMerged++;
-      const existing = seen.get(normalizedNameKey)!;
+      const existing = seen.get(duplicateKey)!;
       console.log(`♻️ Técnico duplicado detectado: "${nameRaw}". Mesclando informações...`);
 
       // Merge phone numbers
@@ -500,8 +506,8 @@ export function buildTechnicians(
     
     console.log("Registro Técnico Final Gerado:", record);
     records.push(record);
-    if (normalizedNameKey) {
-      seen.set(normalizedNameKey, record);
+    if (duplicateKey) {
+      seen.set(duplicateKey, record);
     }
     imported++;
     console.groupEnd();

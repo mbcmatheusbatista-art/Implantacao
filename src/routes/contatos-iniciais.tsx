@@ -52,6 +52,9 @@ function InitialContactsPage() {
   const [chosenName, setChosenName] = useState<string>("");
   const [copiedNameId, setCopiedNameId] = useState<string | null>(null);
   const [selectedMatrices, setSelectedMatrices] = useState<MatrixFilter[]>([]);
+  const importedColumns = store.diagnostics.initial?.columnsMapped ?? {};
+  const columnLabel = (field: "responsible" | "phone" | "matrix" | "plate", fallback: string) =>
+    importedColumns[field] || fallback;
 
   function matrixFilterValue(matrix: string | undefined): MatrixFilter | null {
     const normalized = (matrix ?? "").trim().toUpperCase();
@@ -281,10 +284,10 @@ function InitialContactsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted">
                   <tr className="text-left">
-                    <th className="p-2">Responsável</th>
-                    <th className="p-2">Telefone</th>
-                    <th className="p-2">Matriz</th>
-                    <th className="p-2">Placas</th>
+                    <th className="p-2">{columnLabel("responsible", "Responsável")}</th>
+                    <th className="p-2">{columnLabel("phone", "Telefone")}</th>
+                    <th className="p-2">{columnLabel("matrix", "Matriz")}</th>
+                    <th className="p-2">{columnLabel("plate", "Placas")}</th>
                     <th className="p-2">Status</th>
                     <th className="p-2 text-right">Ações</th>
                   </tr>

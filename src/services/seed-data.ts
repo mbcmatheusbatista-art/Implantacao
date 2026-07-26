@@ -374,6 +374,17 @@ export function findFixedTechnicianLocation(technician: Technician): SeedItem | 
   });
 }
 
+/** Resolves a fixed address from the technician text stored on a service row. */
+export function findFixedTechnicianLocationByName(name: string, state = ""): SeedItem | undefined {
+  const nameNorm = norm(name);
+  const stateNorm = state.toLowerCase().trim();
+  if (!nameNorm) return undefined;
+  return SEED.find((seed) =>
+    (!seed.matchState || seed.matchState.toLowerCase() === stateNorm)
+    && seed.keywords.some((keyword) => nameNorm.includes(norm(keyword))),
+  );
+}
+
 /** Stable identity for a technician in the fixed-location register. */
 export function getFixedTechnicianLocationKey(technician: Technician): string | undefined {
   const fixed = findFixedTechnicianLocation(technician);

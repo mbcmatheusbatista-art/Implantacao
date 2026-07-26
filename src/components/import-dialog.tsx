@@ -69,7 +69,7 @@ export function ImportDialog({
   onOpenChange,
   kind,
   title,
-  initialTab = "upload",
+  initialTab = "paste",
   onConfirm,
 }: Props) {
   const [tab, setTab] = useState<"upload" | "paste">(initialTab);
@@ -220,32 +220,31 @@ export function ImportDialog({
       toast.error("Mapeie ao menos uma coluna reconhecida.");
       return;
     }
-    const confirmedRows =
-      kind === "initial"
-        ? dataObjects.map((row) => {
-            const filteredRow: Record<string, string> = {};
-            for (const field of requiredFields) {
-              const column = mapping[field];
-              if (column) filteredRow[column] = row[column] ?? "";
-            }
-            return filteredRow;
-          })
-        : dataObjects;
+    // Every card imports only the columns selected in this dialog. The full
+    // row set is still passed separately for the one feature that needs it
+    // (plate metadata), without changing the imported records themselves.
+    const selectedRows = dataObjects.map((row) => {
+      const filteredRow: Record<string, string> = {};
+      for (const field of requiredFields) {
+        const column = mapping[field];
+        if (column) filteredRow[column] = row[column] ?? "";
+      }
+      return filteredRow;
+    });
     debugDialog("confirm:rows-sent", {
       kind,
-      count: confirmedRows.length,
-      rowsPreview: confirmedRows.slice(0, 20),
+      count: selectedRows.length,
+      rowsPreview: selectedRows.slice(0, 20),
     });
-    onConfirm(confirmedRows, mapping, fileName, headerRow, selectedSheet || undefined, dataObjects);
+    onConfirm(selectedRows, mapping, fileName, headerRow, selectedSheet || undefined, dataObjects);
     onOpenChange(false);
     resetState();
     toast.success("Importação concluída.");
   }
 
-  const previewHeaders: string[] =
-    kind === "initial"
-      ? requiredFields.map((f) => mapping[f]).filter((h): h is string => !!h)
-      : headers;
+  const previewHeaders: string[] = requiredFields
+    .map((f) => mapping[f])
+    .filter((h): h is string => !!h);
   const preview = dataObjects.slice(0, 5);
 
   return (
@@ -448,7 +447,7 @@ export function ImportDialog({
               <div className="grid grid-cols-2 gap-3">
                 {requiredFields.map((f) => (
                   <div key={f}>
-                    <Label>{FIELD_LABELS[f]}</Label>
+                    <Label>{mapping[f] || FIELD_LABELS[f]}</Label>
                     <Select
                       value={mapping[f] ?? "__none__"}
                       onValueChange={(v) => {
@@ -476,6 +475,10 @@ export function ImportDialog({
                   </div>
                 ))}
               </div>
+
+              <p className="text-xs text-muted-foreground">
+                Escolha as colunas que deseja capturar. A prÃ©-visualizaÃ§Ã£o e a importaÃ§Ã£o usarÃ£o somente estas colunas.
+              </p>
 
               <div>
                 <Label>Pré-visualização ({dataObjects.length} linhas)</Label>
