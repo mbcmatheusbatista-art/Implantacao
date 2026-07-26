@@ -17,6 +17,7 @@ import { ImportDialog } from "@/components/import-dialog";
 import { buildConfirmedServices } from "@/services/build-records";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { equipmentLabel } from "@/utils/normalize-equipment";
+import { normalizeText } from "@/utils/normalize-text";
 
 export const Route = createFileRoute("/atendimentos")({
   component: ConfirmedServicesPage,
@@ -154,12 +155,32 @@ function ConfirmedServicesPage() {
                   {filtered.map((s) => {
                     const a = store.assignments.find((x) => x.serviceId === s.id);
                     const fmtRe = /\u200BFORMAT:(green|red|orange|REDD)\u200B|FORMAT:REDD/g;
-                    const cleanName = (s.technicianOriginal ?? "").replace(fmtRe, "").trim();
-                    const t = a
+                    const rawTechnician = (s.technicianOriginal ?? "").replace(fmtRe, "").trim();
+                    // Imported notes such as "Confirmar se é mais perto após
+                    // ter endereço Vinicius Araújo / 51 ..." are instructions,
+                    // not a technician name. Keep the contact part for lookup
+                    // but never display the instruction in the table.
+                    const technicianNotePhone = rawTechnician;
+                    const cleanName = rawTechnician
+                      .replace(/^confirmar\s+se\s+[ée]?\s*mais\s+perto\s+ap[óo]s\s+ter\s+endere[cç]o\s+/i, "")
+                      .replace(/\s*[/|]\s*\(?\d[\d\s().-]*\d\)?(?:\s*\([^)]*\))?\s*$/, "")
+                      .trim();
+                    const assignedTech = a
                       ? store.technicians.find((x) => x.id === a.technicianId)
-                      : cleanName
-                        ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim()))
-                        : null;
+                      : null;
+                    const normalizedName = normalizeText(cleanName);
+                    const nameMatches = normalizedName
+                      ? store.technicians.filter((x) => {
+                          const candidate = normalizeText(x.nameOriginal);
+                          return candidate.includes(normalizedName) || normalizedName.includes(candidate);
+                        })
+                      : [];
+                    // An assignment may point to an older contact row without
+                    // a phone. Prefer a matching technician record that has a
+                    // valid number, while retaining the assigned name.
+                    const t = [assignedTech, ...nameMatches].filter(Boolean).find((x) =>
+                      Boolean(x?.phoneNormalized || x?.phoneOriginal || x?.allPhones?.length),
+                    ) ?? assignedTech ?? nameMatches[0] ?? null;
                     return (
                       <tr key={s.id} className="border-t hover:bg-muted/30">
                         <td className="p-2 font-mono text-xs">{s.plateOriginal || "—"}</td>
@@ -262,14 +283,20 @@ function ConfirmedServicesPage() {
                             {(() => {
                               const tech = t || (cleanName ? store.technicians.find((x) => x.nameOriginal.toLowerCase().trim().includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(x.nameOriginal.toLowerCase().trim())) : null);
                               const name = tech ? (tech.firstName || tech.nameOriginal) : cleanName;
-                              const phoneRaw = tech ? (tech.phoneNormalized || tech.phoneOriginal || "") : cleanName;
+                              const phoneRaw = [
+                                tech?.phoneNormalized,
+                                tech?.phoneOriginal,
+                                tech?.allPhones?.join("/"),
+                                technicianNotePhone,
+                                !tech ? cleanName : "",
+                              ].filter(Boolean).join("/");
                               const phoneParts = phoneRaw ? phoneRaw.split("/").map(p => p.trim()).filter(Boolean) : [];
                               const contacts: { name: string; digits: string }[] = [];
                               for (const part of phoneParts) {
                                 const nameMatch = part.match(/\(([^)]+)\)/);
                                 const contactName = nameMatch ? nameMatch[1].trim().split(" ")[0] : "";
                                 const digits = part.replace(/\D/g, "");
-                                if (digits.length >= 8) {
+                                if (digits.length >= 8 && !contacts.some((contact) => contact.digits === digits)) {
                                   contacts.push({ name: contactName, digits });
                                 }
                               }
@@ -282,7 +309,7 @@ function ConfirmedServicesPage() {
                               });
 
                               if (contacts.length > 0) {
-                                return contacts.map((c, i) => {
+                                return contacts.slice(0, 1).map((c, i) => {
                                   const url = buildWhatsAppUrl(c.digits, "");
                                   return url ? (
                                     <a key={i} href={url} target="_blank" rel="noopener noreferrer" title={c.name ? `Contato: ${c.name}` : undefined}>

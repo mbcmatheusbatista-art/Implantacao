@@ -58,13 +58,21 @@ const STATE_NAME_TO_UF: Record<string, string> = {
   "tocantins": "TO",
 };
 
+/** Removes a Google Maps (or any web) link appended to an address. */
+export function stripAddressLinks(address: string | null | undefined): string {
+  return String(address || "")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function extractCityAndStateFromAddress(address: string | null | undefined): {
   city: string | null;
   state: string | null;
 } {
   if (!address) return { city: null, state: null };
-  let text = String(address)
-    .replace(/https?:\/\/\S+/gi, " ")
+  let text = stripAddressLinks(address)
+    .replace(/[–—]/g, "-")
     .replace(/\bCEP\b:?/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -90,7 +98,7 @@ export function extractCityAndStateFromAddress(address: string | null | undefine
 
   // Look for pattern ", City - UF" or " City/UF" or "City - UF, CEP"
   const patterns = [
-    /,\s*([^,-]+?)\s*[-/]\s*([A-Za-z]{2})(?:\s*[,.]|\s*\d{5}|\s*$)/,
+    /,\s*([^,-]+?)\s*[-/]\s*([A-Za-z]{2})(?:\s*[,.\-]|\s*\d{5}|\s*$)/,
     /,\s*([A-Za-zÀ-ÿ\s]+?),\s*([A-Za-z]{2})\b/,
     /,\s*([A-Za-zÀ-ÿ\s]+?)\s+([A-Za-z]{2})(?:\s*[,.]|\s*\d{5}|\s*$)/,
     /-\s*([^,-]+?)\s*[-/]\s*([A-Za-z]{2})\b/,

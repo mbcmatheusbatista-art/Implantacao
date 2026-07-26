@@ -12,7 +12,7 @@ export interface RouteDistance {
  * Key format: "origin|destination" normalized to lowercase.
  */
 
-const CACHE_VERSION = "v5";
+const CACHE_VERSION = "v6";
 const APPROX_CACHE_KEY = `creare_approx_route_cache_${CACHE_VERSION}`;
 const EXACT_CACHE_KEY = `creare_exact_route_cache_${CACHE_VERSION}`;
 
@@ -47,11 +47,21 @@ function getTechnicianOrigin(technician: Technician): string {
 }
 
 export function getServiceDestination(service: ConfirmedService): string {
+  const addressWithoutLink = cleanAddress(service.fullAddress || "");
+  // Prefer the city recovered directly from the textual address. This covers
+  // Google Plus-code entries such as "2439+5VW Itapeva, SP" even when the
+  // imported city column was blank because a Maps URL followed the address.
+  const cityFromAddress = extractCity(addressWithoutLink);
+  if (brCityCoords[cityFromAddress]) return cityFromAddress;
   if (service.cityDetected) {
     return cleanAddress([service.cityDetected, service.stateDetected].filter(Boolean).join(", "));
   }
-  return cleanAddress(service.fullAddress);
+  return addressWithoutLink;
 }
+
+// City-centre coordinates systematically understate Brazilian road routes,
+// particularly around metropolitan areas and mountain/highway corridors.
+const CITY_ROUTE_FACTOR = 1.75;
 
 function getCacheKey(technician: Technician, service: ConfirmedService): string {
   const origin = getTechnicianOrigin(technician);
@@ -85,6 +95,9 @@ export function normalize(str: string): string {
 export function extractCity(query: string): string {
   let cleaned = query
     .replace(/https?:\/\/\S+/gi, " ")
+    // Spreadsheets often use en/em dashes around the city and UF. Treat them
+    // exactly like a regular hyphen before separating address components.
+    .replace(/[–—]/g, "-")
     .replace(/\s+/g, " ")
     .trim();
   // Full Brazilian addresses commonly end with a CEP. Remove it before
@@ -92,7 +105,9 @@ export function extractCity(query: string): string {
   cleaned = cleaned
     .replace(/\bCEP\s*\d{5}-?\d{3}\b/gi, "")
     .replace(/\b\d{5}-?\d{3}\b/g, "")
-    .replace(/[\s,;]+$/, "")
+    // Some imports use "Cidade - UF - CEP". After the CEP is removed,
+    // discard the remaining dangling separator so the UF is still detected.
+    .replace(/[\s,;.-]+$/, "")
     .replace(/\s+/g, " ")
     .trim();
   // Remove Google Plus codes like "J2RJ+7XV" or "J2RJ+7XV " before city name
@@ -229,6 +244,21 @@ export function haversineMeters(
 }
 
 /**
+ * Resolves a municipality when it exists in the local registry and otherwise
+ * falls back to the state capital.  This keeps a useful approximate route on
+ * screen for every complete Brazilian address, even for cities not yet in
+ * the bundled coordinate list or while the geocoder is offline.
+ */
+export function getApproximateCoordinates(addressOrCity: string): { lat: number; lng: number } | null {
+  const locality = extractCity(addressOrCity);
+  const exact = brCityCoords[locality];
+  if (exact) return exact;
+
+  const state = locality.split(", ").pop()?.toLocaleLowerCase("pt-BR");
+  return state && STATE_CAPITAL[state] ? brCityCoords[STATE_CAPITAL[state]] ?? null : null;
+}
+
+/**
  * Geocode a full street address via Nominatim (street-level).
  * Bypasses brCityCoords for true street-level coordinates.
  */
@@ -291,6 +321,20 @@ function formatDuration(totalSeconds: number): string {
   return `${hours}h${String(minutes).padStart(2, "0")}`;
 }
 
+export function calculateKnownCityRoute(origin: string, destination: string): RouteDistance | null {
+  const originCoordinates = getApproximateCoordinates(origin);
+  const destinationCoordinates = getApproximateCoordinates(destination);
+  if (!originCoordinates || !destinationCoordinates) return null;
+
+  const meters = Math.max(1000, Math.round(haversineMeters(originCoordinates, destinationCoordinates) * CITY_ROUTE_FACTOR));
+  const seconds = Math.round((meters / 1000 / 75) * 3600);
+  return {
+    distanceMeters: meters,
+    distanceText: `~${formatDistance(meters)}`,
+    durationText: `~${formatDuration(seconds)}`,
+  };
+}
+
 /**
  * Approximate route: client-side OSM geocode + haversine.
  * No Google API quota consumed. Cache in localStorage.
@@ -303,9 +347,39 @@ export async function calculateApproximateRoute(
   const destination = getServiceDestination(service);
   if (!origin || !destination) return null;
 
+  // Resolve known Brazilian cities locally before using any network service.
+  const knownCityRoute = calculateKnownCityRoute(origin, destination);
+  if (knownCityRoute) {
+    if (knownCityRoute.distanceMeters <= 1000 && technician.address && service.fullAddress) {
+      return { distanceMeters: 6500, distanceText: "~7 km", durationText: "~5 min" };
+    }
+    return knownCityRoute;
+  }
+
   const cacheKey = getCacheKey(technician, service);
   const cache = loadCache<RouteDistance | null>(APPROX_CACHE_KEY);
-  if (cacheKey in cache) return cache[cacheKey];
+  // A previous failed lookup must not permanently suppress a route. Retry
+  // null entries, especially after the address parser has been improved.
+  if (cacheKey in cache && cache[cacheKey]) return cache[cacheKey];
+
+  // Resolve known Brazilian municipalities synchronously. This avoids a
+  // network lookup for normal routes such as Nova Santa Rita/RS → Esteio/RS.
+  const originCity = brCityCoords[extractCity(origin)];
+  const destinationCity = brCityCoords[extractCity(destination)];
+  if (originCity && destinationCity) {
+    let straight = haversineMeters(originCity, destinationCity);
+    if (straight < 100 && technician.address && service.fullAddress) straight = 5000;
+    const meters = Math.round(straight * 1.3);
+    const seconds = Math.round((meters / 1000 / 75) * 3600);
+    const result: RouteDistance = {
+      distanceMeters: meters,
+      distanceText: `~${formatDistance(meters)}`,
+      durationText: `~${formatDuration(seconds)}`,
+    };
+    cache[cacheKey] = result;
+    saveCache(APPROX_CACHE_KEY, cache);
+    return result;
+  }
 
   try {
     const [o, d] = await Promise.all([geocodeAddress(origin), geocodeAddress(destination)]);

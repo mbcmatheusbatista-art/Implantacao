@@ -47,6 +47,8 @@ export const brCityCoords: Record<string, { lat: number; lng: number }> = {
   "ipatinga, mg": { lat: -19.4692, lng: -42.5385 },
   "sete lagoas, mg": { lat: -19.4653, lng: -44.2482 },
   "pouso alegre, mg": { lat: -22.2290, lng: -45.9366 },
+  "nova ponte, mg": { lat: -19.1525, lng: -47.6747 },
+  "lavras, mg": { lat: -21.2453, lng: -44.9997 },
   // --- MS ---
   "campo grande, ms": { lat: -20.4697, lng: -54.6201 },
   "dourados, ms": { lat: -22.2214, lng: -54.8060 },

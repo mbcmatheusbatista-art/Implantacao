@@ -9,7 +9,7 @@ import { normalizeBrazilianPhone } from "@/utils/normalize-phone";
 import { extractFirstName } from "@/utils/extract-first-name";
 import { normalizePlate, stripFormatMarkers } from "@/utils/normalize-text";
 import { normalizeEquipment } from "@/utils/normalize-equipment";
-import { extractCityAndStateFromAddress } from "@/utils/extract-location";
+import { extractCityAndStateFromAddress, stripAddressLinks } from "@/utils/extract-location";
 import { parseTechnicianQuantity, stripQuantityFormat } from "@/utils/parse-quantity";
 import { parseEquipmentQuantity } from "@/utils/parse-equipment-quantity";
 import { normalizeText } from "@/utils/normalize-text";
@@ -264,7 +264,8 @@ export function buildConfirmedServices(
     }
     const phoneResult = normalizeBrazilianPhone(phoneRaw);
     const eq = normalizeEquipment(equipmentRaw);
-    const loc = extractCityAndStateFromAddress(addressRaw);
+    const addressWithoutLink = stripAddressLinks(addressRaw);
+    const loc = extractCityAndStateFromAddress(addressWithoutLink);
     const issues: string[] = [];
     if (!plateRaw) {
       issues.push("Placa vazia");
@@ -303,7 +304,7 @@ export function buildConfirmedServices(
       firstName: extractFirstName(respRaw),
       phoneOriginal: phoneRaw,
       phoneNormalized: phoneResult.primary,
-      fullAddress: addressRaw,
+      fullAddress: addressWithoutLink,
       cityDetected: loc.city,
       stateDetected: loc.state,
       equipmentOriginal: equipmentRaw,

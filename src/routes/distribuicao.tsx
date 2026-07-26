@@ -20,6 +20,8 @@ import { stockStatusLabel } from "@/utils/parse-quantity";
 import {
   buildGoogleMapsRouteUrl,
   calculateApproximateRoute,
+  calculateKnownCityRoute,
+  getServiceDestination,
   haversineMeters,
   normalize,
   type RouteDistance,
@@ -27,10 +29,25 @@ import {
 } from "@/services/distance";
 import { brCityCoords } from "@/services/br-city-coords";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
+import { extractCityAndStateFromAddress, stripAddressLinks } from "@/utils/extract-location";
 import type { ConfirmedService, Technician } from "@/types";
 import { applySeedAddresses, getFixedTechnicianLocationKey, getSeedTechnicians } from "@/services/seed-data";
 
-const MAX_ROUTE_METERS = 240_000;
+const MAX_ROUTE_METERS = 900_000;
+
+function cityKeyFromAddress(address: string): string | null {
+  const normalizedAddress = address.replace(/[–—]/g, "-");
+  const stateMatches = Array.from(
+    normalizedAddress.matchAll(/[-/]\s*([A-Z]{2})(?=\s*[,\-]|\s*\d{5}|\s*$)/g),
+  );
+  const stateMatch = stateMatches[stateMatches.length - 1];
+  if (!stateMatch || stateMatch.index === undefined) return null;
+
+  const beforeState = normalizedAddress.slice(0, stateMatch.index);
+  const city = beforeState.split(/[,-]/).map((part) => part.trim()).filter(Boolean).pop();
+  const state = stateMatch[1].toLocaleLowerCase("pt-BR");
+  return city ? `${normalize(city).toLocaleLowerCase("pt-BR")}, ${state}` : null;
+}
 
 const NEIGHBORING_STATES: Record<string, string[]> = {
   AC: ["AM", "RO"],
@@ -100,10 +117,20 @@ function DistributionPage() {
     setLoadingRoutes(true);
   }, [selectedServiceId]);
 
-  const service = useMemo(
-    () => store.confirmedServices.find((s) => s.id === selectedServiceId),
-    [selectedServiceId, store.confirmedServices],
-  );
+  const service = useMemo(() => {
+    const selected = store.confirmedServices.find((s) => s.id === selectedServiceId);
+    if (!selected) return undefined;
+    // Older imports may have a Google Maps link appended directly to the
+    // address. Clean it and recover city/UF before ranking or routing.
+    const fullAddress = stripAddressLinks(selected.fullAddress);
+    const locality = extractCityAndStateFromAddress(fullAddress);
+    return {
+      ...selected,
+      fullAddress,
+      cityDetected: locality.city ?? selected.cityDetected,
+      stateDetected: locality.state ?? selected.stateDetected,
+    };
+  }, [selectedServiceId, store.confirmedServices]);
 
   const loads = useMemo(() => getSessionLoads(store.assignments), [store.assignments]);
 
@@ -198,7 +225,53 @@ function DistributionPage() {
       if (!cancelled) setRoutes(initial);
 
       const next = { ...initial };
-      const calculations = techsToCalc.map((tech) =>
+      const pendingRemoteCalculations: Technician[] = [];
+      for (const tech of techsToCalc) {
+        // The technician and the selected client already carry city/UF in
+        // the distribution data. Prefer those authoritative fields here;
+        // parsing a street address is only a fallback for older records.
+        const techCity = normalize(tech.cityOriginal || "").toLocaleLowerCase("pt-BR");
+        const techState = (tech.state || "").toLocaleLowerCase("pt-BR");
+        const techCoordinates = techCity && techState
+          ? brCityCoords[`${techCity}, ${techState}`]
+          : null;
+        if (svcCoords && techCoordinates) {
+          const straightMeters = haversineMeters(techCoordinates, svcCoords);
+          const meters = straightMeters < 100 && tech.address && svc.fullAddress
+            ? 6500
+            // City-centre points understate road routes; use a conservative
+            // road factor until street-level routing is requested in Maps.
+            : Math.max(1000, Math.round(straightMeters * 1.75));
+          const seconds = Math.round((meters / 1000 / 75) * 3600);
+          const distance: RouteDistance = {
+            distanceMeters: meters,
+            distanceText: `~${Math.round(meters / 1000)} km`,
+            durationText: `~${seconds < 3600 ? `${Math.max(1, Math.round(seconds / 60))} min` : `${Math.floor(seconds / 3600)}h${String(Math.round((seconds % 3600) / 60)).padStart(2, "0")}`}`,
+          };
+          next[tech.id] = { distance, mode: "approximate" };
+          continue;
+        }
+
+        // Render known-city routes immediately. This is independent of OSM
+        // availability and prevents the card from remaining as "—".
+        const localDistance = calculateKnownCityRoute(
+          tech.address || [tech.cityOriginal, tech.state].filter(Boolean).join(", "),
+          getServiceDestination(svc),
+        );
+        if (localDistance) {
+          next[tech.id] = { distance: localDistance, mode: "approximate" };
+          continue;
+        }
+
+        pendingRemoteCalculations.push(tech);
+      }
+
+      // Publish every deterministic local route in a single state update
+      // before any slower lookup begins. A failed lookup elsewhere must not
+      // erase routes such as Registro/SP â†’ PaulÃ­nia/SP.
+      if (!cancelled) setRoutes({ ...next });
+
+      const calculations = pendingRemoteCalculations.map((tech) =>
         calculateApproximateRoute(tech, svc).then((distance) => {
           next[tech.id] = { distance, mode: "approximate" };
           if (!cancelled) setRoutes({ ...next });
@@ -315,7 +388,55 @@ function DistributionPage() {
   function renderTechnicianRow(t: Technician, reasons: string[], showApproximateLabel = false) {
     const load = loads.get(t.id) ?? 0;
     const isAssigned = currentAssignment?.technicianId === t.id;
-    const route = routes[t.id];
+    const calculatedRoute = routes[t.id];
+    // Keep a deterministic address-based fallback in the rendered card. This
+    // protects valid local routes if a separate asynchronous lookup times out.
+    const localFallback = service
+      ? calculateKnownCityRoute(
+          t.address || [t.cityOriginal, t.state].filter(Boolean).join(", "),
+          getServiceDestination(service),
+        )
+      : null;
+    // Covers short client addresses such as "Registro - SP, 11900-000",
+    // where imported city metadata is blank but the city is clearly present.
+    const technicianKey = t.cityOriginal && t.state
+      ? `${normalize(t.cityOriginal).toLocaleLowerCase("pt-BR")}, ${t.state.toLocaleLowerCase("pt-BR")}`
+      : null;
+    const serviceKey = service ? cityKeyFromAddress(service.fullAddress) : null;
+    const technicianCoordinates = technicianKey ? brCityCoords[technicianKey] : null;
+    const serviceCoordinates = serviceKey ? brCityCoords[serviceKey] : null;
+    const addressFallback = technicianCoordinates && serviceCoordinates
+      ? (() => {
+          const meters = Math.max(1000, Math.round(haversineMeters(technicianCoordinates, serviceCoordinates) * 1.75));
+          const seconds = Math.round((meters / 1000 / 75) * 3600);
+          return {
+            distanceMeters: meters,
+            distanceText: `~${Math.round(meters / 1000)} km`,
+            durationText: seconds < 3600
+              ? `~${Math.max(1, Math.round(seconds / 60))} min`
+              : `~${Math.floor(seconds / 3600)}h${String(Math.round((seconds % 3600) / 60)).padStart(2, "0")}`,
+          };
+        })()
+      : null;
+    const hasInconsistentShortEstimate =
+      calculatedRoute?.mode === "approximate" &&
+      calculatedRoute.distance &&
+      addressFallback &&
+      calculatedRoute.distance.distanceMeters < addressFallback.distanceMeters * 0.45;
+    // Do not replace normal calculations. This only guards the misleading
+    // "~1 km" case caused by two different addresses falling onto the same
+    // fallback coordinate (for example Rio de Janeiro/RJ versus Itaguaí/RJ).
+    const route = calculatedRoute?.mode === "exact"
+      ? calculatedRoute
+      : hasInconsistentShortEstimate
+        ? { distance: addressFallback!, mode: "approximate" as RouteMode }
+        : calculatedRoute?.distance
+          ? calculatedRoute
+          : localFallback
+            ? { distance: localFallback, mode: "approximate" as RouteMode }
+            : addressFallback
+              ? { distance: addressFallback, mode: "approximate" as RouteMode }
+              : calculatedRoute;
     const techAssignments = store.assignments.filter((a) => a.technicianId === t.id);
     return (
       <li
@@ -357,7 +478,7 @@ function DistributionPage() {
             )}
             {route?.mode === "approximate" && route.distance && (
               <Badge variant="secondary" className="text-[10px]">
-                ~{route.distance.distanceText}
+                {route.distance.distanceText}
               </Badge>
             )}
             {route?.mode === "exact" && route.distance && (
@@ -378,7 +499,7 @@ function DistributionPage() {
             {route?.distance
               ? route.mode === "exact"
                 ? route.distance.distanceText
-                : `~${route.distance.distanceText}`
+                : route.distance.distanceText
               : loadingRoutes
                 ? "Calculando..."
                 : "—"}
@@ -615,7 +736,7 @@ function DistributionPage() {
                   <Info className="w-4 h-4" />
                   <AlertDescription className="text-xs">
                     Distâncias aproximadas (∼) calculadas automaticamente sem custo.
-                    Recomendados até 240 km. Confirme disponibilidade com o técnico.
+                    Recomendados até 900 km. Confirme disponibilidade com o técnico.
                   </AlertDescription>
                 </Alert>
 
@@ -648,7 +769,7 @@ function DistributionPage() {
                       <Card>
                         <CardHeader className="py-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            Distantes (&gt;240 km)
+                            Distantes (&gt;900 km)
                             <Button
                               size="sm"
                               variant="ghost"
