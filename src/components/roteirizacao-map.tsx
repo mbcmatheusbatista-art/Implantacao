@@ -18,6 +18,7 @@ import { associatePhonesToPeople } from "@/utils/extract-phones";
 import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { getGreetingByCurrentTime } from "@/utils/greeting";
 import { normalizeText, stripFormatMarkers } from "@/utils/normalize-text";
+import { equipmentLabel } from "@/utils/normalize-equipment";
 import { findFixedTechnicianLocation } from "@/services/seed-data";
 
 const STATE_REGION: Record<string, string> = {
@@ -158,7 +159,62 @@ function getStatusColor(status: string): string {
   return "";
 }
 
-function buildPlatePopupHtml(service: ConfirmedService): string {
+function getAssociatedTechnicianText(service: ConfirmedService): string {
+  return (service.technicianOriginal || "")
+    .replace(/\u200BFORMAT:\w+\u200B|FORMAT:\w+/g, "")
+    .replace(/^confirmar\s+se\s+[ée]?\s*mais\s+perto\s+ap[óo]s\s+ter\s+endere[cç]o\s+/i, "")
+    .trim();
+}
+
+function getAssociatedTechnician(service: ConfirmedService, technicians: Technician[]): Technician | null {
+  const rawText = getAssociatedTechnicianText(service);
+  const rawName = rawText
+    .replace(/\s*[/|]\s*\(?\d[\d\s().-]*\d\)?(?:\s*\([^)]*\))?\s*$/, "")
+    .trim();
+  // Use the cleaned text from the imported row first. technicianNormalized can
+  // contain an appended phone number from the source spreadsheet, which must
+  // not be part of the name comparison.
+  const target = normalizeText(rawName || service.technicianNormalized);
+  if (!target) return null;
+
+  const exact = technicians.find((technician) => normalizeText(technician.nameOriginal) === target);
+  if (exact) return exact;
+
+  const words = target.split(" ").filter(Boolean);
+  if (words.length < 2) return null;
+  const matches = technicians.filter((technician) => {
+    const candidate = normalizeText(technician.nameOriginal);
+    return candidate.includes(target) || target.includes(candidate);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+interface AssociatedTechnicianContact {
+  name: string;
+  phone: string;
+}
+
+function getAssociatedTechnicianContact(
+  service: ConfirmedService,
+  technicians: Technician[],
+): AssociatedTechnicianContact | null {
+  const technician = getAssociatedTechnician(service, technicians);
+  const rawText = getAssociatedTechnicianText(service);
+  const embeddedPhone = rawText.match(/(?:\+?55[\s.-]*)?\(?\d{2}\)?[\s.-]*9?\s*\d{4,5}[\s.-]*\d{4}/)?.[0];
+  const phone = technician?.phoneNormalized || technician?.phoneOriginal || technician?.allPhones?.[0] || embeddedPhone;
+  if (!phone) return null;
+
+  const nameFromRow = rawText
+    .replace(/(?:\+?55[\s.-]*)?\(?\d{2}\)?[\s.-]*9?\s*\d{4,5}[\s.-]*\d{4}/, "")
+    .replace(/[|/()-]+$/g, "")
+    .trim();
+  return {
+    name: technician?.nameOriginal || nameFromRow,
+    phone,
+  };
+}
+
+function buildPlatePopupHtml(service: ConfirmedService, associatedTechnician?: AssociatedTechnicianContact | null): string {
   const parsed = parsePeopleFromResponsibleText(service.responsibleOriginal);
   const phones = associatePhonesToPeople(
     service.phoneOriginal || "",
@@ -196,6 +252,8 @@ function buildPlatePopupHtml(service: ConfirmedService): string {
     html += `<div><strong>Endere\u00e7o:</strong> ${escapeHtml(service.fullAddress)}</div>`;
   }
 
+  html += `<div><strong>Equipamento:</strong> ${escapeHtml(equipmentLabel(service.equipmentNormalized))}</div>`;
+
   const dataHora = service.dataHora ? service.dataHora : "";
   if (dataHora) {
     html += `<div><strong>Data/Hora:</strong> ${escapeHtml(dataHora)}</div>`;
@@ -222,6 +280,19 @@ function buildPlatePopupHtml(service: ConfirmedService): string {
     const bgColor = isVehicleHolder ? "#dc2626" : "#25D366";
     const displayName = isVehicleHolder ? `est\u00e1 com ${shortName}` : shortName;
     html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:${bgColor};color:white;text-decoration:none;border-radius:4px;font-size:12px;font-weight:600;">${wppSvg} ${escapeHtml(displayName)}</a>`;
+  }
+
+  const isFinalized = normalizeText(service.serviceStatus || service.serviceStatusOriginal) === "FINALIZADO";
+  const technicianUrl = !isFinalized && associatedTechnician?.phone
+    ? buildWhatsAppUrl(associatedTechnician.phone, `Olá, ${greeting} ${associatedTechnician.name.split(" ")[0] || ""}!`)
+    : null;
+  if (technicianUrl && associatedTechnician) {
+    const technicianName = stripFormatMarkers(associatedTechnician.name)
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(" ");
+    html += `<a href="${escapeHtml(technicianUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#0f766e;color:white;text-decoration:none;border-radius:4px;font-size:12px;font-weight:600;">${wppSvg} Técnico ${escapeHtml(technicianName)}</a>`;
   }
 
   if (!hasAnyUrl && service.phoneOriginal) {
@@ -346,6 +417,7 @@ export function RoteirizacaoMap({
         unresolved.push(`${c.responsibleOriginal || "?"} (${addr})`);
       }
     }
+
     console.log("[MAPA] Resumo pontos", { techCount, clientCount, totalPontos: pts.length });
     if (pts.length > 0) {
       console.log(
@@ -626,6 +698,18 @@ export function RoteirizacaoMap({
     clientMarkersRef.current.clear();
     removeRoute();
 
+    // A municipality coordinate can be shared by several clients. When their
+    // statuses differ, a single visible badge would be ambiguous, so do not
+    // render it over any of those overlapping markers.
+    const statusesByCoordinate = new Map<string, Set<string>>();
+    for (const point of visiblePoints) {
+      if (point.type !== "client" || !point.service) continue;
+      const coordinateKey = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+      const statuses = statusesByCoordinate.get(coordinateKey) || new Set<string>();
+      statuses.add(normalizeText(point.service.serviceStatus || point.service.serviceStatusOriginal));
+      statusesByCoordinate.set(coordinateKey, statuses);
+    }
+
     for (const p of visiblePoints) {
       const lat = p.lat;
       const lng = p.lng;
@@ -714,9 +798,13 @@ export function RoteirizacaoMap({
 
       const marker = L.marker([lat, lng], { icon }).addTo(layerGroup);
 
-      if (!isTech && p.service?.serviceStatusOriginal) {
-        const origNorm = normalizeText(p.service.serviceStatusOriginal).trim();
-        if (origNorm === "AGENDAR") {
+      if (!isTech && p.service) {
+        // Imports with mapped/dynamic columns may not retain serviceStatusOriginal.
+        // The normalized status remains the source of truth for the map badge.
+        const statusNorm = normalizeText(p.service.serviceStatus || p.service.serviceStatusOriginal).trim();
+        const coordinateKey = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+        const uniqueStatusAtCoordinate = statusesByCoordinate.get(coordinateKey)?.size === 1;
+        if (statusNorm === "AGENDAR" && uniqueStatusAtCoordinate) {
           (marker as any).__clientStatus = { text: "AGENDAR", color: "#f97316" };
         }
       }
@@ -728,6 +816,9 @@ export function RoteirizacaoMap({
         const status = p.service?.serviceStatus || "";
         const statusColor = getStatusColor(status);
         tooltipHtml = `<strong>${escapeHtml(p.label)}</strong><br/>${p.details}<br/><em>Cliente</em>`;
+        if (p.service) {
+          tooltipHtml += `<br/><strong>Equipamento:</strong> ${escapeHtml(equipmentLabel(p.service.equipmentNormalized))}`;
+        }
         if (status && statusColor) {
           tooltipHtml += `<br/><span style="color:${statusColor};font-weight:700;font-size:13px;">${escapeHtml(status)}</span>`;
         } else if (status) {
@@ -737,7 +828,7 @@ export function RoteirizacaoMap({
       }
       marker.bindTooltip(tooltipHtml, { direction: "top", offset: [0, -20] });
       if (!isTech && p.service) {
-        const popupHtml = buildPlatePopupHtml(p.service);
+        const popupHtml = buildPlatePopupHtml(p.service, getAssociatedTechnicianContact(p.service, technicians));
         marker.bindPopup(popupHtml, { maxWidth: 320, minWidth: 260 });
         (marker as any).__popupHtml = popupHtml;
       }
@@ -942,7 +1033,7 @@ export function RoteirizacaoMap({
       const invalidAddr = !hasAddr || hasAddr === "-" || hasAddr === "não informado" || hasAddr === "nao informado" || hasAddr === "sem endereço" || hasAddr === "sem endereco";
 
       if (!invalidAddr) {
-        const popupHtml = buildPlatePopupHtml(service);
+        const popupHtml = buildPlatePopupHtml(service, getAssociatedTechnicianContact(service, technicians));
         marker.bindPopup(popupHtml, { maxWidth: 320, minWidth: 260 });
         marker.openPopup();
       }
@@ -964,7 +1055,7 @@ export function RoteirizacaoMap({
         map.flyTo([coords.lat, coords.lng], 10, { duration: 1 });
       }
     }
-  }, []);
+  }, [technicians]);
 
   const handleClientFilter = useCallback((_personName: string, allIds: string[], validIds: string[]) => {
     setClientSearchActive(true);
