@@ -244,9 +244,9 @@ function AgendamentosPage() {
             `*${s.plateOriginal || "—"}*  |  ${getDataHora(s) || "sem data"}  |  ${s.fullAddress}  |  ${equipmentLabel(s.equipmentNormalized)}`
         );
         return [title, "", ...lines].join("\n");
-      })
-      .join("\n\n");
-    return blocks;
+      });
+    const separator = "------------------------------------------------------------";
+    return blocks.join("\n\n" + separator + "\n\n");
   }
 
   function handleOpenWhatsApp() {
@@ -339,7 +339,6 @@ function AgendamentosPage() {
                         checked={includeAgendando}
                         onChange={(e) => setIncludeAgendando(e.target.checked)}
                         className="accent-primary"
-                        disabled={selectedStatusFilter === "AGENDANDO"}
                       />
                       Incluir AGENDANDO
                     </label>
@@ -459,7 +458,7 @@ function AgendamentosPage() {
             </Card>
           )}
 
-          {selectedTechFilter !== "all" && filteredServices.length > 0 && (
+          {selectedTechFilter !== "all" && includeAgendando && (
           <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
