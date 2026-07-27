@@ -16,6 +16,7 @@ import { CalendarDays, Filter, MessageCircle } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { MessageDialog } from "@/components/message-dialog";
 import { equipmentLabel } from "@/utils/normalize-equipment";
+import { formatPhoneForDisplay, normalizeBrazilianPhone } from "@/utils/normalize-phone";
 import type { ConfirmedService } from "@/types";
 
 export const Route = createFileRoute("/agendamentos")({
@@ -30,6 +31,7 @@ function AgendamentosPage() {
   const store = useAppStore();
   const services = store.confirmedServices;
   const technicians = store.technicians;
+  const initialContacts = store.initialContacts;
 
 
   const [statusOverrides, setStatusOverrides] = useState<StatusOverrides>({});
@@ -37,9 +39,11 @@ function AgendamentosPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
   const [hiddenTechs, setHiddenTechs] = useState<Set<string>>(new Set());
   const [includeAgendando, setIncludeAgendando] = useState(true);
+  const [reminderScheduling, setReminderScheduling] = useState(false);
   const [messageTech, setMessageTech] = useState<{
     tech: typeof technicians[number];
     text: string;
+    phone: string | null;
   } | null>(null);
 
   const techMap = useMemo(() => {
@@ -164,8 +168,105 @@ function AgendamentosPage() {
     return value;
   }
 
+  function findTechByName(name: string): typeof technicians[number] | null {
+    const exact = techMap.byName.get(name.toLowerCase().trim());
+    if (exact) return exact;
+    for (const [key, tech] of techMap.byName) {
+      if (namesMatch(name, key)) return tech;
+    }
+    return null;
+  }
+
+  function phoneForTech(tech: typeof technicians[number] | null, fallbackName: string): string | null {
+    const phoneFrom = (candidate: typeof technicians[number] | null | undefined): string | null => {
+      if (!candidate) return null;
+      return (
+        candidate.phoneNormalized ??
+        candidate.allPhones?.[0] ??
+        normalizeBrazilianPhone(candidate.phoneOriginal).primary ??
+        normalizeBrazilianPhone(candidate.nameOriginal).primary ??
+        null
+      );
+    };
+
+    const direct = phoneFrom(tech);
+    if (direct) return direct;
+
+    // Nomes do atendimento podem estar abreviados (ex.: "Helder") ou conter o
+    // número junto ao nome. Quando houver mais de um registro semelhante,
+    // priorizamos o que possui telefone válido.
+    const matchingTechnician = technicians.find((candidate) =>
+      namesMatch(candidate.nameOriginal, fallbackName) && !!phoneFrom(candidate),
+    );
+    const matchedPhone = phoneFrom(matchingTechnician);
+    if (matchedPhone) return matchedPhone;
+
+    return normalizeBrazilianPhone(fallbackName).primary;
+  }
+
   function hasAddress(svc: ConfirmedService): boolean {
     return !!(svc.fullAddress && svc.fullAddress.trim().length > 0);
+  }
+
+  function normalizedKey(value: string | null | undefined): string {
+    return String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  }
+
+  function shortName(value: string): string {
+    const parts = value.trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= 2) return parts.join(" ");
+    const ignored = new Set(["de", "da", "do", "das", "dos", "e"]);
+    const first = parts[0];
+    const surname = parts.slice(1).find((part) => !ignored.has(part.toLowerCase()));
+    return [first, surname].filter(Boolean).join(" ");
+  }
+
+  function getReminderContact(svc: ConfirmedService): { name: string; phone: string } {
+    const plate = normalizedKey(svc.plateOriginal);
+    const responsible = cl(svc.responsibleOriginal);
+    const assignedMatch = responsible.match(/est[aá]\s+com\s+(?:o|a)\s+([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,2})/i);
+    const assignedName = assignedMatch?.[1]?.trim();
+    const contactsByPlate = initialContacts.filter(
+      (contact) =>
+        normalizedKey(contact.plateNormalized) === plate ||
+        contact.plates.some((contactPlate) => normalizedKey(contactPlate) === plate),
+    );
+    const contactsByName = initialContacts.filter((contact) =>
+      namesMatch(contact.responsibleOriginal, assignedName || responsible),
+    );
+    const contactPhone = (
+      contact: typeof initialContacts[number] | undefined,
+      preferAssignedPerson = false,
+    ): string => {
+      if (!contact) return "";
+      const normalized = [
+        ...(contact.allPhones ?? []),
+        ...(normalizeBrazilianPhone(contact.phoneOriginal).all ?? []),
+        contact.phoneNormalized ?? "",
+      ].filter((value, index, list) => value && list.indexOf(value) === index);
+      const chosen = preferAssignedPerson && normalized.length > 1
+        ? normalized[normalized.length - 1]
+        : normalized[0];
+      return chosen ? formatPhoneForDisplay(chosen) : "";
+    };
+    const contactByPlate = contactsByPlate.find((contact) => contactPhone(contact, !!assignedName)) ?? contactsByPlate[0];
+    const contactByName = contactsByName.find((contact) => contactPhone(contact, !!assignedName)) ?? contactsByName[0];
+    const directPhone = /\d{8,}/.test(svc.phoneOriginal || "")
+      ? svc.phoneOriginal
+      : svc.phoneNormalized || "";
+
+    return {
+      name: shortName(assignedName || responsible) || "—",
+      phone:
+        contactPhone(contactByPlate, !!assignedName) ||
+        contactPhone(contactByName, !!assignedName) ||
+        directPhone ||
+        "—",
+    };
   }
 
   function filterByTech(svc: ConfirmedService, value: string): boolean {
@@ -226,6 +327,72 @@ function AgendamentosPage() {
     return result;
   }, [services, selectedTechFilter, hiddenTechs, statusOverrides, includeAgendando]);
 
+  function nextBusinessDay(from = new Date()): Date {
+    const target = new Date(from);
+    target.setHours(0, 0, 0, 0);
+    target.setDate(target.getDate() + 1);
+    while (target.getDay() === 0 || target.getDay() === 6) {
+      target.setDate(target.getDate() + 1);
+    }
+    return target;
+  }
+
+  function serviceDateKey(svc: ConfirmedService): string | null {
+    const match = getDataHora(svc).match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if (!match) return null;
+    return match[1].padStart(2, "0") + "/" + match[2].padStart(2, "0");
+  }
+
+  function dateKey(date: Date): string {
+    return String(date.getDate()).padStart(2, "0") + "/" + String(date.getMonth() + 1).padStart(2, "0");
+  }
+
+  const reminderTarget = useMemo(() => nextBusinessDay(), []);
+
+  const reminderServices = useMemo(() => {
+    if (selectedTechFilter === "all") return [];
+    const target = dateKey(reminderTarget);
+    return services.filter((svc) => {
+      const name = svc.technicianOriginal?.toLowerCase().trim();
+      return (
+        !(name && hiddenTechs.has(name)) &&
+        filterByTech(svc, selectedTechFilter) &&
+        getEffectiveStatus(svc) === "AGENDADO" &&
+        hasAddress(svc) &&
+        serviceDateKey(svc) === target
+      );
+    });
+  }, [services, selectedTechFilter, hiddenTechs, statusOverrides, reminderTarget]);
+
+  const reminderGroups = useMemo(() => {
+    if (!reminderScheduling) return [];
+    const target = dateKey(reminderTarget);
+    const grouped = new Map<string, ConfirmedService[]>();
+    for (const service of services) {
+      const technicianName = service.technicianOriginal?.trim();
+      const hiddenName = technicianName?.toLowerCase();
+      if (
+        !technicianName ||
+        (hiddenName && hiddenTechs.has(hiddenName)) ||
+        (selectedTechFilter !== "all" && !filterByTech(service, selectedTechFilter)) ||
+        getEffectiveStatus(service) !== "AGENDADO" ||
+        !hasAddress(service) ||
+        serviceDateKey(service) !== target
+      ) {
+        continue;
+      }
+      const key = technicianName.toLowerCase();
+      const current = grouped.get(key);
+      if (current) current.push(service);
+      else grouped.set(key, [service]);
+    }
+    return [...grouped.entries()].map(([key, items]) => ({
+      key,
+      technicianName: items[0].technicianOriginal?.trim() || "Técnico não informado",
+      items,
+    }));
+  }, [services, reminderScheduling, selectedTechFilter, hiddenTechs, statusOverrides, reminderTarget]);
+
   function buildMessageText(): string {
     if (messageServices.length === 0) return "";
 
@@ -249,6 +416,78 @@ function AgendamentosPage() {
     return blocks.join("\n\n" + separator + "\n\n");
   }
 
+  function buildReminderMessage(
+    servicesForReminder = reminderServices,
+    technicianName = resolveTechName(selectedTechFilter),
+  ): string {
+    if (servicesForReminder.length === 0) return "";
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+    const technician = findTechByName(technicianName);
+    const techName = (technician?.firstName || technicianName.split(/\s+/)[0] || "técnico").trim();
+    const targetIsTomorrow = dateKey(reminderTarget) === dateKey(new Date(Date.now() + 86_400_000));
+    const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(reminderTarget);
+    const confirmation = targetIsTomorrow
+      ? "Tudo certo para amanhã?"
+      : "Tudo certo para " + weekday + ", " + dateKey(reminderTarget) + "?";
+
+    const grouped = new Map<string, { contact: { name: string; phone: string }; items: ConfirmedService[] }>();
+    for (const service of servicesForReminder) {
+      const contact = getReminderContact(service);
+      const key = normalizedKey(contact.name) + "::" + contact.phone.replace(/\D/g, "");
+      const existing = grouped.get(key);
+      if (existing) existing.items.push(service);
+      else grouped.set(key, { contact, items: [service] });
+    }
+
+    const details = [...grouped.values()].map(({ contact, items }) => {
+      const equipment = [...new Set(items.map((item) => equipmentLabel(item.equipmentNormalized)))];
+      const sameEquipment = equipment.length === 1;
+      const plates = items
+        .map((item) => {
+          const plate = cl(item.plateOriginal) || "—";
+          return sameEquipment ? plate : plate + " (" + equipmentLabel(item.equipmentNormalized) + ")";
+        })
+        .join(" | ");
+      const dates = [...new Set(items.map((item) => getDataHora(item) || "—"))].join(" | ");
+      const addresses = [...new Set(items.map((item) => cl(item.fullAddress)).filter(Boolean))];
+      const mapsLinks = [...new Set(items.map((item) => item.addressLink).filter(Boolean))];
+      return [
+        (items.length > 1 ? "*Placas:* " : "*Placa:* ") + plates,
+        (sameEquipment ? "*Instalação de:* " : "*Instalações:* ") + equipment.join(" | "),
+        "*Data e horário:* " + dates,
+        ...(addresses.length === 1
+          ? ["*Endereço:* " + addresses[0]]
+          : addresses.map((address) => "• *Endereço:* " + address)),
+        ...mapsLinks.map((link) => "*Mapa:* " + link),
+        "*Condutor:* " + contact.name,
+        "*Contato:* " + contact.phone,
+      ].join("\n");
+    });
+
+    const hideGreetingName =
+      normalizedKey(technicianName).includes("viniciusaraujo") ||
+      [...grouped.values()].some(({ contact }) => normalizedKey(contact.name).includes("davidcomin"));
+    return [
+      greeting + (hideGreetingName ? "!" : ", " + techName + "!") + " " + confirmation,
+      ...details,
+    ].join("\n\n");
+  }
+
+  function openReminderMessage(technicianName: string, servicesForReminder: ConfirmedService[]) {
+    const technician = findTechByName(technicianName);
+    const text = buildReminderMessage(servicesForReminder, technicianName);
+    if (!text) return;
+    setMessageTech({
+      tech: technician || {
+        firstName: technicianName.split(/\s+/)[0] || "Técnico",
+        nameOriginal: technicianName,
+      } as typeof technicians[number],
+      text,
+      phone: phoneForTech(technician, technicianName),
+    });
+  }
+
   function handleOpenWhatsApp() {
     if (selectedTechFilter === "all") {
       toast.error("Selecione um técnico específico para enviar WhatsApp.");
@@ -256,10 +495,16 @@ function AgendamentosPage() {
     }
     const tech = selectedTechObj;
     const techName = resolveTechName(selectedTechFilter);
-    const text = buildMessageText();
+    const text = reminderScheduling ? buildReminderMessage() : buildMessageText();
+    if (!text) {
+      const date = dateKey(reminderTarget);
+      toast.error("Nenhum atendimento AGENDADO foi encontrado para " + date + ".");
+      return;
+    }
     setMessageTech({
       tech: tech || { firstName: techName, nameOriginal: techName } as typeof technicians[number],
       text,
+      phone: phoneForTech(tech, techName),
     });
   }
 
@@ -331,17 +576,32 @@ function AgendamentosPage() {
                 >
                   Limpar filtros
                 </Button>
+                <label className="flex items-center gap-1 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeAgendando}
+                    onChange={(e) => {
+                      setIncludeAgendando(e.target.checked);
+                      if (e.target.checked) setReminderScheduling(false);
+                    }}
+                    className="accent-primary"
+                  />
+                  Incluir AGENDANDO
+                </label>
+                <label className="flex items-center gap-1 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reminderScheduling}
+                    onChange={(e) => {
+                      setReminderScheduling(e.target.checked);
+                      if (e.target.checked) setIncludeAgendando(false);
+                    }}
+                    className="accent-primary"
+                  />
+                  Lembrete agendamento
+                </label>
                 {selectedTechFilter !== "all" && (
                   <>
-                    <label className="flex items-center gap-1 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={includeAgendando}
-                        onChange={(e) => setIncludeAgendando(e.target.checked)}
-                        className="accent-primary"
-                      />
-                      Incluir AGENDANDO
-                    </label>
                     <Button onClick={handleOpenWhatsApp}>
                       <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
                     </Button>
@@ -351,6 +611,7 @@ function AgendamentosPage() {
             </CardContent>
           </Card>
 
+          {!(reminderScheduling && selectedTechFilter === "all") && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -430,6 +691,7 @@ function AgendamentosPage() {
               )}
             </CardContent>
           </Card>
+          )}
 
           {hiddenTechs.size > 0 && (
             <Card>
@@ -456,6 +718,54 @@ function AgendamentosPage() {
                 ))}
               </CardContent>
             </Card>
+          )}
+
+          {reminderScheduling && (
+            <section className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">Lembretes para {dateKey(reminderTarget)}</h2>
+                <p className="text-sm text-muted-foreground">
+                  Atendimentos AGENDADOS do próximo dia útil, separados por técnico.
+                </p>
+              </div>
+              {reminderGroups.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    Nenhum lembrete encontrado para a próxima data.
+                  </CardContent>
+                </Card>
+              ) : (
+                reminderGroups.map((group) => (
+                  <Card key={group.key}>
+                    <CardHeader className="flex flex-row items-center justify-between gap-4">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CalendarDays className="w-4 h-4" />
+                        Lembrete — {group.technicianName}
+                        <Badge variant="outline">{group.items.length}</Badge>
+                      </CardTitle>
+                      <Button onClick={() => openReminderMessage(group.technicianName, group.items)}>
+                        <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
+                      </Button>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-1">
+                        {group.items.map((service) => (
+                          <li key={service.id} className="text-sm py-2 border-b last:border-0">
+                            <span className="font-mono text-xs font-semibold">{cl(service.plateOriginal) || "—"}</span>
+                            <span className="text-muted-foreground">
+                              {" "}— {getDataHora(service) || "sem data"} — {cl(service.fullAddress) || "Endereço não informado"}
+                            </span>
+                            <Badge variant="secondary" className="ml-2 text-[10px]">
+                              {equipmentLabel(service.equipmentNormalized)}
+                            </Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </section>
           )}
 
           {selectedTechFilter !== "all" && includeAgendando && (
@@ -516,14 +826,7 @@ function AgendamentosPage() {
           open={messageTech !== null}
           onOpenChange={(v) => !v && setMessageTech(null)}
           message={messageTech.text}
-          phone={
-            selectedTechObj
-              ? selectedTechObj.phoneNormalized ??
-                selectedTechObj.allPhones?.[0] ??
-                selectedTechObj.phoneOriginal ??
-                null
-              : null
-          }
+          phone={messageTech.phone}
           title={`Mensagem para ${messageTech.tech.firstName || messageTech.tech.nameOriginal}`}
         />
       )}

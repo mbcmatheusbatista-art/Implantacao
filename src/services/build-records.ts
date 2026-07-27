@@ -264,6 +264,7 @@ export function buildConfirmedServices(
     }
     const phoneResult = normalizeBrazilianPhone(phoneRaw);
     const eq = normalizeEquipment(equipmentRaw);
+    const addressLink = addressRaw.match(/https?:\/\/[^\s]+/i)?.[0];
     const addressWithoutLink = stripAddressLinks(addressRaw);
     const loc = extractCityAndStateFromAddress(addressWithoutLink);
     const issues: string[] = [];
@@ -305,6 +306,7 @@ export function buildConfirmedServices(
       phoneOriginal: phoneRaw,
       phoneNormalized: phoneResult.primary,
       fullAddress: addressWithoutLink,
+      addressLink,
       cityDetected: loc.city,
       stateDetected: loc.state,
       equipmentOriginal: equipmentRaw,

@@ -46,6 +46,7 @@ export interface ConfirmedService {
   phoneOriginal: string;
   phoneNormalized: string | null;
   fullAddress: string;
+  addressLink?: string;
   cityDetected: string | null;
   stateDetected: string | null;
   equipmentOriginal: string;
