@@ -47,6 +47,8 @@ const SEED_TECHNICIANS_DATA: SeedEntry[] = [
 interface SeedItem {
   /** Stable identity from the supplied location register.  Do not key locations by first name. */
   id?: string;
+  /** Friendly label shown on the map and used by technician search. */
+  displayName?: string;
   firstName: string;
   keywords: string[];   // Qualquer um dessas palavras contido no nome normalizado = match
   matchState?: string;
@@ -82,6 +84,7 @@ const SEED: SeedItem[] = [
     keywords: ["AUTO SYSTEM"],
     matchState: "sc",
     address: "R. Antonio Frassetto, 979 - Nossa Sra. de Fátima, Içara - SC, 88820-000",
+    lat: -28.6964395, lng: -49.3023808,
   },
   {
     id: "rafael-auto-system-ms",
@@ -96,6 +99,7 @@ const SEED: SeedItem[] = [
     firstName: "bruno",
     keywords: ["BRUNO RICARDO", "BRUNO MEDEIROS"],
     address: "Av. Prof. Josué de Castro, 189 - casa 1 - Porto do Rosa, São Gonçalo - RJ, 24425-285",
+    lat: -22.7971861, lng: -43.0429223,
   },
   {
     firstName: "carlos",
@@ -135,16 +139,19 @@ const SEED: SeedItem[] = [
     firstName: "diego",
     keywords: ["DKC", "D K C", "DIEGO KURUNZI"],
     address: "Av. Barcelona, 777 - Jardim Panorama, Sarandi - PR, 87113-230",
+    lat: -23.4272106, lng: -51.8784038,
   },
   {
     firstName: "danilo",
     keywords: ["DANILO DANIEL"],
     address: "R. Felício Nalin, 284 - Jardim Irapua, Piracicaba - SP, 13408-041",
+    lat: -22.676157, lng: -47.690198,
   },
   {
     firstName: "diego",
     keywords: ["DIEGO GOMES RODRIGUES", "DIEGO GOMES"],
     address: "R. Monte Plano, 813 - Cintra, Montes Claros - MG, 39400-713",
+    lat: -16.7322723, lng: -43.8531707,
   },
   {
     firstName: "diego",
@@ -165,9 +172,18 @@ const SEED: SeedItem[] = [
     lat: -25.4822762, lng: -49.2731379,
   },
   {
+    id: "danilo-efraim-rastreamento",
     firstName: "danilo",
-    keywords: ["EFRAIM RASTREAMENTO", "EFRAIM"],
-    address: "R. Ver. Jone Kiss - Parque Santa Julia, Lauro de Freitas - BA, 42700-000",
+    displayName: "Danilo — EFRAIM RASTREAMENTO E GESTAO DE FROTAS",
+    keywords: [
+      "DANILO EFRAIM RASTREAMENTO E GESTAO DE FROTAS",
+      "EFRAIM RASTREAMENTO E GESTAO DE FROTAS",
+      "EFRAIM RASTREAMENTO",
+      "EFRAIM",
+    ],
+    address: "Rua Vereador Jone Kiss, 925 - Itinga, Lauro de Freitas - BA, 42739-160",
+    lat: -12.8973233,
+    lng: -38.3426234,
   },
   {
     firstName: "filipe",
@@ -179,6 +195,7 @@ const SEED: SeedItem[] = [
     firstName: "helder",
     keywords: ["HELDER RENATO", "HELDER SOARES"],
     address: "R. João Angelieri, 150, Porto Feliz - SP, 18540-000",
+    lat: -23.2083629, lng: -47.5221119,
   },
   {
     // J.O. SECCHIN — aparece como "J O SECCHIN", "SECCHIN", "VIX INSTALACOES"
@@ -191,6 +208,7 @@ const SEED: SeedItem[] = [
     firstName: "jeferson",
     keywords: ["JEFERSON FERREIRA", "JEFERSON"],
     address: "R. Igessy Marinho Rocha, 14 - Jacarecica, Maceió - AL, 57038-560",
+    lat: -9.6132909, lng: -35.6894513,
   },
   {
     firstName: "jeilson",
@@ -208,12 +226,14 @@ const SEED: SeedItem[] = [
     firstName: "joão",
     keywords: ["JOAO VITOR BASSI", "JOAO VITOR"],
     address: "Av. Ernesto Matiolli - Aeroporto, Lavras - MG, 37200-000",
+    lat: -21.2659871, lng: -44.9830834,
   },
   {
     // JP Rastreadores — aparece como "JACSON PONTELLI (JP Rastreadores)"
     firstName: "jacson",
     keywords: ["JP RASTREADORES", "JACSON PONTELLI"],
     address: "Av. Augusto de Campos, 351 - Jardim das Estacoes (Vila Xavier), Araraquara - SP, 14810-349",
+    lat: -21.7746627, lng: -48.1447338,
   },
   {
     // Kadosh — aparece como "KADOSH - TEC - SERVICOS..."
@@ -232,6 +252,7 @@ const SEED: SeedItem[] = [
     firstName: "larissa",
     keywords: ["LARISSA GABRIELE", "LARISSA DO AMARAL"],
     address: "Av. Antônio Felipe, 41 - Bairro Alto, Guariba - SP, 14840-000",
+    lat: -21.367912, lng: -48.247616,
   },
   {
     firstName: "leonardo",
@@ -249,6 +270,7 @@ const SEED: SeedItem[] = [
     firstName: "lucas",
     keywords: ["LUCAS DA SILVEIRA NEVES", "LUCAS SILVEIRA BELIM"],
     address: "R. Jesus Cristo, 09 - Cidade Continental-Setor ASIA, Serra - ES, 29163-645",
+    lat: -20.219264, lng: -40.226332,
   },
   {
     firstName: "marcos",
@@ -284,6 +306,7 @@ const SEED: SeedItem[] = [
     firstName: "valnei",
     keywords: ["PUK PUK MECANICA", "PUK PUK", "VALNEI"],
     address: "R. 25 Dezembro, 432 - Baús, Costa Rica - MS, 79550-000",
+    lat: -18.5521673, lng: -53.1263212,
   },
   {
     // R2 Equipadora / C.C.M. Serviços — aparece como "C.C.M. SERVICOS DE RASTREAMENTO - R2"
@@ -308,11 +331,13 @@ const SEED: SeedItem[] = [
     firstName: "ricardo",
     keywords: ["RICARDO M DA ROCHA", "RICARDO M ROCHA", "RICARDO M  DA ROCHA"],
     address: "Alameda Denilson de Paula, nº 69, Buritis, Uberlândia - MG, CEP 38410-008.",
+    lat: -18.9464732, lng: -48.231703,
   },
   {
     firstName: "ricardo",
     keywords: ["SOUZA CRUZ MONITORAMENTO", "SOUZA CRUZ"],
     address: "Rua Dante Senno, 688, Ribeirao Preto - SP, 14.031-420",
+    lat: -21.1983875, lng: -47.8486825,
   },
   {
     // SS Instalações — aparece como "SS INSTALACOES DE RASTREADORES LTDA"
@@ -325,6 +350,7 @@ const SEED: SeedItem[] = [
     firstName: "valdinei",
     keywords: ["VALDINEI LUIZ DE OLIVEIRA", "VALDINEI OLIVEIRA"],
     address: "R. Antônio Bertoncine - Santa Cruz do Rio Pardo, SP, 18900-000",
+    lat: -22.8957496, lng: -49.636423,
   },
   {
     firstName: "michael",
@@ -342,6 +368,7 @@ const SEED: SeedItem[] = [
     firstName: "william",
     keywords: ["WILLIAM LUCAS ARAUJO", "WARLLEN TADEU", "MARCO TULIO WILLIAM"],
     address: "R. Nova Serrana, 639 - Nossa Sra. de Lourdes, Pará de Minas - MG, 35660-178",
+    lat: -19.8525819, lng: -44.6110589,
   },
   {
     firstName: "washiton",
@@ -436,6 +463,7 @@ export function applySeedAddresses(records: Technician[]): Technician[] {
 
       return {
         ...t,
+        nameOriginal: matchedSeed.displayName ?? t.nameOriginal,
         // SEED sempre ganha, mesmo que a planilha já tenha algum endereço
         // The provided register is authoritative. An explicitly unknown entry
         // must not inherit an imported or client-derived location.
@@ -472,7 +500,7 @@ export function getSeedTechnicians(): Technician[] {
   // has been imported yet.
   return SEED.map((s, index) => {
     const locality = fixedAddressLocality(s.address);
-    const label = s.keywords[0] || s.firstName;
+    const label = s.displayName ?? s.keywords[0] ?? s.firstName;
     return {
     id: `fixed_${s.id ?? index}`,
     nameOriginal: label,

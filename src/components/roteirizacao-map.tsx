@@ -833,9 +833,12 @@ export function RoteirizacaoMap({
           color: #2563eb;
         ">${p.label}</div>`;
         iconW = 140;
-        iconH = 22;
+        // The label sits above the 22px technician icon. Anchor the bottom of
+        // that icon to the geographic coordinate so the visible marker does
+        // not appear displaced south of the registered address.
+        iconH = 43;
         ancX = 70;
-        ancY = 22;
+        ancY = 43;
       } else {
         iconW = 32;
         iconH = 32;
@@ -860,9 +863,11 @@ export function RoteirizacaoMap({
             text-align: center;
           ">${parts.join(" ")}${warn}</div>`;
           iconW = 140;
-          iconH = 56;
+          iconH = 62;
           ancX = 70;
-          ancY = 22;
+          // Keep the coordinate pinned to the technician icon; the inventory
+          // badge is only an annotation rendered below it.
+          ancY = 43;
         }
       }
 
