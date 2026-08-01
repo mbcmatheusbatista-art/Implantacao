@@ -14,6 +14,7 @@ import { Route as TarefasRouteImport } from './routes/tarefas'
 import { Route as SolicitacoesRouteImport } from './routes/solicitacoes'
 import { Route as SapRouteImport } from './routes/sap'
 import { Route as RoteirizacaoRouteImport } from './routes/roteirizacao'
+import { Route as PlannerRouteImport } from './routes/planner'
 import { Route as DistribuicaoRouteImport } from './routes/distribuicao'
 import { Route as DiagnosticoRouteImport } from './routes/diagnostico'
 import { Route as ContatosIniciaisRouteImport } from './routes/contatos-iniciais'
@@ -46,6 +47,11 @@ const SapRoute = SapRouteImport.update({
 const RoteirizacaoRoute = RoteirizacaoRouteImport.update({
   id: '/roteirizacao',
   path: '/roteirizacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlannerRoute = PlannerRouteImport.update({
+  id: '/planner',
+  path: '/planner',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DistribuicaoRoute = DistribuicaoRouteImport.update({
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/contatos-iniciais': typeof ContatosIniciaisRoute
   '/diagnostico': typeof DiagnosticoRoute
   '/distribuicao': typeof DistribuicaoRoute
+  '/planner': typeof PlannerRoute
   '/roteirizacao': typeof RoteirizacaoRoute
   '/sap': typeof SapRoute
   '/solicitacoes': typeof SolicitacoesRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/contatos-iniciais': typeof ContatosIniciaisRoute
   '/diagnostico': typeof DiagnosticoRoute
   '/distribuicao': typeof DistribuicaoRoute
+  '/planner': typeof PlannerRoute
   '/roteirizacao': typeof RoteirizacaoRoute
   '/sap': typeof SapRoute
   '/solicitacoes': typeof SolicitacoesRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/contatos-iniciais': typeof ContatosIniciaisRoute
   '/diagnostico': typeof DiagnosticoRoute
   '/distribuicao': typeof DistribuicaoRoute
+  '/planner': typeof PlannerRoute
   '/roteirizacao': typeof RoteirizacaoRoute
   '/sap': typeof SapRoute
   '/solicitacoes': typeof SolicitacoesRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/contatos-iniciais'
     | '/diagnostico'
     | '/distribuicao'
+    | '/planner'
     | '/roteirizacao'
     | '/sap'
     | '/solicitacoes'
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
     | '/contatos-iniciais'
     | '/diagnostico'
     | '/distribuicao'
+    | '/planner'
     | '/roteirizacao'
     | '/sap'
     | '/solicitacoes'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '/contatos-iniciais'
     | '/diagnostico'
     | '/distribuicao'
+    | '/planner'
     | '/roteirizacao'
     | '/sap'
     | '/solicitacoes'
@@ -192,6 +204,7 @@ export interface RootRouteChildren {
   ContatosIniciaisRoute: typeof ContatosIniciaisRoute
   DiagnosticoRoute: typeof DiagnosticoRoute
   DistribuicaoRoute: typeof DistribuicaoRoute
+  PlannerRoute: typeof PlannerRoute
   RoteirizacaoRoute: typeof RoteirizacaoRoute
   SapRoute: typeof SapRoute
   SolicitacoesRoute: typeof SolicitacoesRoute
@@ -234,6 +247,13 @@ declare module '@tanstack/react-router' {
       path: '/roteirizacao'
       fullPath: '/roteirizacao'
       preLoaderRoute: typeof RoteirizacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/planner': {
+      id: '/planner'
+      path: '/planner'
+      fullPath: '/planner'
+      preLoaderRoute: typeof PlannerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/distribuicao': {
@@ -304,6 +324,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContatosIniciaisRoute: ContatosIniciaisRoute,
   DiagnosticoRoute: DiagnosticoRoute,
   DistribuicaoRoute: DistribuicaoRoute,
+  PlannerRoute: PlannerRoute,
   RoteirizacaoRoute: RoteirizacaoRoute,
   SapRoute: SapRoute,
   SolicitacoesRoute: SolicitacoesRoute,

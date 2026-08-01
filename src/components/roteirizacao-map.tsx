@@ -160,7 +160,9 @@ function getStatusColor(status: string): string {
 type MapSearchResult =
   | { kind: "tech"; technician: Technician }
   | { kind: "client"; service: ConfirmedService }
-  | { kind: "clientPerson"; name: string; recordIds: string[] };
+  | { kind: "clientPerson"; name: string; recordIds: string[] }
+  | { kind: "address"; address: string; recordIds: string[] }
+  | { kind: "geocode"; address: string; lat: number; lng: number };
 
 function findClientPeople(clients: ConfirmedService[], query: string): MapSearchResult[] {
   const people = new Map<string, { name: string; recordIds: string[] }>();
@@ -183,6 +185,63 @@ function findClientPeople(clients: ConfirmedService[], query: string): MapSearch
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
     .slice(0, 8)
     .map((person) => ({ kind: "clientPerson" as const, ...person }));
+}
+
+/** Busca por endereço: agrupa os serviços que compartilham o mesmo endereço. */
+function findAddressResults(clients: ConfirmedService[], query: string): MapSearchResult[] {
+  const addresses = new Map<string, { address: string; recordIds: string[] }>();
+  for (const service of clients) {
+    const address = normalizeText(service.fullAddress || "").trim();
+    if (!address || !address.includes(query)) continue;
+    const existing = addresses.get(address);
+    if (existing) {
+      if (!existing.recordIds.includes(service.id)) existing.recordIds.push(service.id);
+    } else {
+      addresses.set(address, { address: service.fullAddress, recordIds: [service.id] });
+    }
+  }
+  return [...addresses.values()]
+    .sort((a, b) => a.address.localeCompare(b.address, "pt-BR"))
+    .slice(0, 8)
+    .map((entry) => ({ kind: "address" as const, ...entry }));
+}
+
+type GeocodeSearchStatus =
+  | { status: "idle" }
+  | { status: "loading"; address: string }
+  | { status: "found"; address: string; lat: number; lng: number }
+  | { status: "notfound"; address: string };
+
+/**
+ * Geocodifica qualquer endereço digitado (mesmo sem cliente no mapa) com
+ * debounce, via endpoint do servidor (Nominatim + fallback Photon). Expõe
+ * estados de carregamento e "não encontrado" para feedback na lista.
+ */
+function useDebouncedGeocode(query: string): GeocodeSearchStatus {
+  const [state, setState] = useState<GeocodeSearchStatus>({ status: "idle" });
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 3) {
+      setState({ status: "idle" });
+      return;
+    }
+    setState({ status: "loading", address: trimmed });
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const coords = await geocodeFullAddress(trimmed);
+      if (cancelled) return;
+      setState(
+        coords
+          ? { status: "found", address: trimmed, lat: coords.lat, lng: coords.lng }
+          : { status: "notfound", address: trimmed },
+      );
+    }, 700);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+  return state;
 }
 
 function getAssociatedTechnicianText(service: ConfirmedService): string {
@@ -503,7 +562,8 @@ export function RoteirizacaoMap({
   const [shortcutDialogPosition, setShortcutDialogPosition] = useState<{ x: number; y: number } | null>(null);
   const [topSearchOpen, setTopSearchOpen] = useState(false);
   const [topSearchQuery, setTopSearchQuery] = useState("");
-  const pendingZoomRef = useRef<{ latlngs: { lat: number; lng: number }[] } | null>(null);
+  const [addressPin, setAddressPin] = useState<{ lat: number; lng: number; address: string } | null>(null);
+  const pendingZoomRef = useRef<{ latlngs: { lat: number; lng: number }[]; zoom?: number } | null>(null);
   const preserveViewportOnNextMarkerUpdateRef = useRef(false);
   const searchAreaRef = useRef<HTMLDivElement>(null);
   const [selectedTechId, setSelectedTechId] = useState<string | null>(null);
@@ -801,6 +861,51 @@ export function RoteirizacaoMap({
       }
     }
 
+    // Pino de um endereço pesquisado (qualquer endereço, mesmo sem cliente no
+    // mapa): mesma demarcação orgânica tracejada da busca de cliente.
+    if (addressPin) {
+      const polygon = Array.from({ length: 11 }, (_, index) => {
+        const angle = (Math.PI * 2 * index) / 11;
+        const radius =
+          0.0072 * (0.78 + ((index * 37 + addressPin.address.length * 11) % 29) / 100);
+        return [
+          addressPin.lat + Math.sin(angle) * radius,
+          addressPin.lng +
+            (Math.cos(angle) * radius) / Math.max(0.35, Math.cos((addressPin.lat * Math.PI) / 180)),
+        ] as [number, number];
+      });
+      L.polygon(polygon, {
+        color: "#7c3aed",
+        weight: 2,
+        opacity: 0.8,
+        dashArray: "8 6",
+        fillColor: "#a855f7",
+        fillOpacity: 0.16,
+        interactive: false,
+      }).addTo(layerGroup);
+
+      const pinIcon = L.divIcon({
+        className: "",
+        html: `<div style="
+          width: 22px; height: 22px;
+          background: linear-gradient(145deg, #a855f7, #7c3aed);
+          border: 2px solid rgba(255,255,255,0.9);
+          border-radius: 50%;
+          box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+          cursor: pointer;
+        "></div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+      const pinMarker = L.marker([addressPin.lat, addressPin.lng], { icon: pinIcon }).addTo(
+        layerGroup,
+      );
+      pinMarker.bindTooltip(
+        `<strong>Endereço pesquisado</strong><br/>${escapeHtml(addressPin.address)}`,
+        { direction: "top", offset: [0, -12] },
+      );
+    }
+
     for (const p of visiblePoints) {
       const markerPosition = p.clientId ? clientMarkerPositions.get(p.clientId) : undefined;
       const lat = markerPosition?.lat ?? p.lat;
@@ -989,10 +1094,10 @@ export function RoteirizacaoMap({
 
     // Handle pending zoom from client person selection
     if (pendingZoomRef.current) {
-      const { latlngs } = pendingZoomRef.current;
+      const { latlngs, zoom } = pendingZoomRef.current;
       pendingZoomRef.current = null;
       if (latlngs.length === 1) {
-        map.flyTo([latlngs[0].lat, latlngs[0].lng], 14, { duration: 1 });
+        map.flyTo([latlngs[0].lat, latlngs[0].lng], zoom ?? 14, { duration: 1 });
       } else if (latlngs.length > 1) {
         const bounds = L.latLngBounds(latlngs.map((p) => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
@@ -1005,7 +1110,7 @@ export function RoteirizacaoMap({
       const bounds = L.latLngBounds(visiblePoints.map((p) => [p.lat, p.lng]));
       map.fitBounds(bounds, { padding: [50, 50] });
     }
-  }, [visiblePoints, mapReady, renderTick]);
+  }, [visiblePoints, mapReady, renderTick, addressPin]);
 
   const updateStatusBadges = useCallback((map: L.Map) => {
     const zoom = map.getZoom();
@@ -1085,6 +1190,9 @@ export function RoteirizacaoMap({
     return technicians.filter((t) => techIdsOnMap.has(t.id));
   }, [technicians, points]);
 
+  const shortcutGeocode = useDebouncedGeocode(shortcutSearchQuery);
+  const topGeocode = useDebouncedGeocode(topSearchQuery);
+
   const shortcutSearchResults = useMemo<MapSearchResult[]>(() => {
     const query = normalizeText(shortcutSearchQuery);
     if (!query) return [];
@@ -1103,8 +1211,23 @@ export function RoteirizacaoMap({
       .slice(0, 5)
       .map((service) => ({ kind: "client" as const, service }));
 
-    return [...technicianMatches, ...personMatches, ...clientMatches];
-  }, [clients, shortcutSearchQuery, visibleTechs]);
+    return [
+      ...technicianMatches,
+      ...personMatches,
+      ...findAddressResults(clients, query),
+      ...clientMatches,
+      ...(shortcutGeocode.status === "found"
+        ? [
+            {
+              kind: "geocode" as const,
+              address: shortcutGeocode.address,
+              lat: shortcutGeocode.lat,
+              lng: shortcutGeocode.lng,
+            },
+          ]
+        : []),
+    ];
+  }, [clients, shortcutSearchQuery, visibleTechs, shortcutGeocode]);
 
   const topSearchResults = useMemo<MapSearchResult[]>(() => {
     const query = normalizeText(topSearchQuery);
@@ -1118,8 +1241,23 @@ export function RoteirizacaoMap({
       .filter((service) => normalizeText(service.plateOriginal || "").includes(query) || normalizeText(service.responsibleOriginal || "").includes(query))
       .slice(0, 5)
       .map((service) => ({ kind: "client" as const, service }));
-    return [...technicianMatches, ...personMatches, ...clientMatches];
-  }, [clients, topSearchQuery, visibleTechs]);
+    return [
+      ...technicianMatches,
+      ...personMatches,
+      ...findAddressResults(clients, query),
+      ...clientMatches,
+      ...(topGeocode.status === "found"
+        ? [
+            {
+              kind: "geocode" as const,
+              address: topGeocode.address,
+              lat: topGeocode.lat,
+              lng: topGeocode.lng,
+            },
+          ]
+        : []),
+    ];
+  }, [clients, topSearchQuery, visibleTechs, topGeocode]);
 
   const handleTechSelect = useCallback((tech: Technician) => {
     const map = mapInstanceRef.current;
@@ -1182,6 +1320,7 @@ export function RoteirizacaoMap({
   const handleClientFilter = useCallback((_personName: string, allIds: string[], validIds: string[]) => {
     setClientSearchActive(true);
     setClientFilterIds(new Set(allIds));
+    setAddressPin(null);
     setRenderTick((t) => t + 1);
     const latlngs: { lat: number; lng: number }[] = [];
     for (const p of points) {
@@ -1198,8 +1337,21 @@ export function RoteirizacaoMap({
     preserveViewportOnNextMarkerUpdateRef.current = true;
     setClientSearchActive(false);
     setClientFilterIds(new Set());
+    setAddressPin(null);
     setRenderTick((t) => t + 1);
     pendingZoomRef.current = null;
+  }, []);
+
+  /**
+   * Fixa um pino com a demarcação orgânica (mesmo estilo da busca de cliente)
+   * em um endereço qualquer pesquisado, mesmo sem cliente no mapa.
+   */
+  const handleAddressPin = useCallback((address: string, lat: number, lng: number) => {
+    setClientSearchActive(false);
+    setClientFilterIds(new Set());
+    setAddressPin({ address, lat, lng });
+    setRenderTick((t) => t + 1);
+    pendingZoomRef.current = { latlngs: [{ lat, lng }], zoom: 16 };
   }, []);
 
   // Um clique em uma area vazia encerra a busca de cliente e restaura o mapa
@@ -1212,6 +1364,7 @@ export function RoteirizacaoMap({
       if (target?.closest?.(".leaflet-marker-icon, .leaflet-popup, .leaflet-control")) return;
       setSelectedTechId(null);
       setSelectedClientId(null);
+      setAddressPin(null);
       removeRoute();
       if (clientSearchActive) handleClearClientFilter();
     }
@@ -1224,12 +1377,16 @@ export function RoteirizacaoMap({
       handleTechSelect(result.technician);
     } else if (result.kind === "client") {
       handlePlateSelect(result.service);
+    } else if (result.kind === "address") {
+      handleClientFilter(result.address, result.recordIds, result.recordIds);
+    } else if (result.kind === "geocode") {
+      handleAddressPin(result.address, result.lat, result.lng);
     } else {
       handleClientFilter(result.name, result.recordIds, result.recordIds);
     }
     setShortcutSearchQuery("");
     setShortcutSearchOpen(false);
-  }, [handleClientFilter, handlePlateSelect, handleTechSelect]);
+  }, [handleAddressPin, handleClientFilter, handlePlateSelect, handleTechSelect]);
 
   const selectTopSearchResult = useCallback((result: MapSearchResult) => {
     selectShortcutResult(result);
@@ -1320,24 +1477,64 @@ export function RoteirizacaoMap({
                 if (event.key === "Escape") { setTopSearchOpen(false); setTopSearchQuery(""); }
                 if (event.key === "Enter" && topSearchResults[0]) { event.preventDefault(); selectTopSearchResult(topSearchResults[0]); }
               }}
-              placeholder="Buscar técnico, cliente ou placa..."
+              placeholder="Buscar técnico, cliente, placa ou endereço..."
               className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
             {topSearchOpen && topSearchQuery && (
               <div className="absolute inset-x-0 top-full mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover shadow-lg">
-                {topSearchResults.length === 0 ? (
+                {topSearchResults.length === 0 && topGeocode.status !== "notfound" ? (
                   <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado encontrado.</p>
                 ) : topSearchResults.map((result) => (
                   <button
-                    key={result.kind === "tech" ? `top-tech-${result.technician.id}` : result.kind === "clientPerson" ? `top-person-${result.name}` : `top-client-${result.service.id}`}
+                    key={
+                      result.kind === "tech"
+                        ? `top-tech-${result.technician.id}`
+                        : result.kind === "clientPerson"
+                          ? `top-person-${result.name}`
+                          : result.kind === "address"
+                            ? `top-address-${result.address}`
+                            : result.kind === "geocode"
+                              ? `top-geocode-${result.address}`
+                              : `top-client-${result.service.id}`
+                    }
                     type="button"
                     onMouseDown={() => selectTopSearchResult(result)}
                     className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
                   >
-                    <span>{result.kind === "tech" ? result.technician.nameOriginal : result.kind === "clientPerson" ? result.name : result.service.responsibleOriginal}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{result.kind === "tech" ? "Técnico" : result.kind === "clientPerson" ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}` : result.service.plateOriginal || "Cliente"}</span>
+                    <span className="truncate">
+                      {result.kind === "tech"
+                        ? result.technician.nameOriginal
+                        : result.kind === "clientPerson"
+                          ? result.name
+                          : result.kind === "address"
+                            ? result.address
+                            : result.kind === "geocode"
+                              ? `Localizar: ${result.address}`
+                              : result.service.responsibleOriginal}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {result.kind === "tech"
+                        ? "Técnico"
+                        : result.kind === "clientPerson"
+                          ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}`
+                          : result.kind === "address"
+                            ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}`
+                            : result.kind === "geocode"
+                              ? "Endereço"
+                              : result.service.plateOriginal || "Cliente"}
+                    </span>
                   </button>
                 ))}
+                {topGeocode.status === "loading" && (
+                  <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                    Buscando endereço "{topGeocode.address}"...
+                  </p>
+                )}
+                {topGeocode.status === "notfound" && (
+                  <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                    Nenhum endereço encontrado para "{topGeocode.address}".
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -1396,27 +1593,65 @@ export function RoteirizacaoMap({
                         selectShortcutResult(shortcutSearchResults[0]);
                       }
                     }}
-                    placeholder="Buscar técnico, cliente ou placa..."
+                    placeholder="Buscar técnico, cliente, placa ou endereço..."
                     className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
                 {shortcutSearchQuery && (
                   <div className="mt-2 max-h-64 overflow-y-auto rounded border">
-                    {shortcutSearchResults.length === 0 ? (
+                    {shortcutSearchResults.length === 0 && shortcutGeocode.status !== "notfound" ? (
                       <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado encontrado.</p>
                     ) : shortcutSearchResults.map((result) => (
                       <button
-                        key={result.kind === "tech" ? `tech-${result.technician.id}` : result.kind === "clientPerson" ? `person-${result.name}` : `client-${result.service.id}`}
+                        key={
+                          result.kind === "tech"
+                            ? `tech-${result.technician.id}`
+                            : result.kind === "clientPerson"
+                              ? `person-${result.name}`
+                              : result.kind === "address"
+                                ? `address-${result.address}`
+                                : result.kind === "geocode"
+                                  ? `geocode-${result.address}`
+                                  : `client-${result.service.id}`
+                        }
                         type="button"
                         onMouseDown={() => selectShortcutResult(result)}
                         className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-accent"
                       >
-                        <span>{result.kind === "tech" ? result.technician.nameOriginal : result.kind === "clientPerson" ? result.name : result.service.responsibleOriginal}</span>
+                        <span className="truncate">
+                          {result.kind === "tech"
+                            ? result.technician.nameOriginal
+                            : result.kind === "clientPerson"
+                              ? result.name
+                              : result.kind === "address"
+                                ? result.address
+                                : result.kind === "geocode"
+                                  ? `Localizar: ${result.address}`
+                                  : result.service.responsibleOriginal}
+                        </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
-                          {result.kind === "tech" ? "Técnico" : result.kind === "clientPerson" ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}` : result.service.plateOriginal || "Cliente"}
+                          {result.kind === "tech"
+                            ? "Técnico"
+                            : result.kind === "clientPerson"
+                              ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}`
+                              : result.kind === "address"
+                                ? `${result.recordIds.length} veículo${result.recordIds.length !== 1 ? "s" : ""}`
+                                : result.kind === "geocode"
+                                  ? "Endereço"
+                                  : result.service.plateOriginal || "Cliente"}
                         </span>
                       </button>
                     ))}
+                    {shortcutGeocode.status === "loading" && (
+                      <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                        Buscando endereço "{shortcutGeocode.address}"...
+                      </p>
+                    )}
+                    {shortcutGeocode.status === "notfound" && (
+                      <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                        Nenhum endereço encontrado para "{shortcutGeocode.address}".
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

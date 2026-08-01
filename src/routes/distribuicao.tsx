@@ -426,17 +426,15 @@ function DistributionPage() {
     // Do not replace normal calculations. This only guards the misleading
     // "~1 km" case caused by two different addresses falling onto the same
     // fallback coordinate (for example Rio de Janeiro/RJ versus Itaguaí/RJ).
-    const route = calculatedRoute?.mode === "exact"
-      ? calculatedRoute
-      : hasInconsistentShortEstimate
-        ? { distance: addressFallback!, mode: "approximate" as RouteMode }
-        : calculatedRoute?.distance
-          ? calculatedRoute
-          : localFallback
-            ? { distance: localFallback, mode: "approximate" as RouteMode }
-            : addressFallback
-              ? { distance: addressFallback, mode: "approximate" as RouteMode }
-              : calculatedRoute;
+    const route = hasInconsistentShortEstimate
+      ? { distance: addressFallback!, mode: "approximate" as RouteMode }
+      : calculatedRoute?.distance
+        ? calculatedRoute
+        : localFallback
+          ? { distance: localFallback, mode: "approximate" as RouteMode }
+          : addressFallback
+            ? { distance: addressFallback, mode: "approximate" as RouteMode }
+            : calculatedRoute;
     const techAssignments = store.assignments.filter((a) => a.technicianId === t.id);
     return (
       <li
@@ -481,11 +479,6 @@ function DistributionPage() {
                 {route.distance.distanceText}
               </Badge>
             )}
-            {route?.mode === "exact" && route.distance && (
-              <Badge variant="default" className="text-[10px]">
-                {route.distance.distanceText}
-              </Badge>
-            )}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
             {formatPhoneForDisplay(t.phoneNormalized)} · {reasons.join(" · ")}
@@ -493,13 +486,11 @@ function DistributionPage() {
         </div>
         <div className="md:text-right">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {route?.mode === "exact" ? "Rota (Google)" : route?.mode === "approximate" || showApproximateLabel ? "Rota (aprox.)" : "Distância"}
+            {route?.mode === "approximate" || showApproximateLabel ? "Rota (aprox.)" : "Distância"}
           </div>
           <div className="text-sm font-semibold tabular-nums">
             {route?.distance
-              ? route.mode === "exact"
-                ? route.distance.distanceText
-                : route.distance.distanceText
+              ? route.distance.distanceText
               : loadingRoutes
                 ? "Calculando..."
                 : "—"}

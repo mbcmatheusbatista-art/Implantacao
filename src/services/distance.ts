@@ -8,13 +8,12 @@ export interface RouteDistance {
 }
 
 /**
- * Separate caches for approximate (free) vs exact (Google) routes.
+ * Cache for approximate (free) routes.
  * Key format: "origin|destination" normalized to lowercase.
  */
 
 const CACHE_VERSION = "v6";
 const APPROX_CACHE_KEY = `creare_approx_route_cache_${CACHE_VERSION}`;
-const EXACT_CACHE_KEY = `creare_exact_route_cache_${CACHE_VERSION}`;
 
 function loadCache<T>(key: string): Record<string, T> {
   try {
@@ -406,39 +405,6 @@ export async function calculateApproximateRoute(
 }
 
 /**
- * Exact route (Google Routes API). Only call when user explicitly requests it.
- */
-export async function calculateExactGoogleRoute(
-  technician: Technician,
-  service: ConfirmedService,
-): Promise<RouteDistance | null> {
-  const origin = getTechnicianOrigin(technician);
-  const destination = getServiceDestination(service);
-  if (!origin || !destination) return null;
-
-  const cacheKey = getCacheKey(technician, service);
-  // Check exact cache first
-  const exactCache = loadCache<RouteDistance | null>(EXACT_CACHE_KEY);
-  if (cacheKey in exactCache) return exactCache[cacheKey];
-
-  try {
-    const response = await fetch("/api/route-distance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ origin, destination, mode: "exact" }),
-    });
-    if (!response.ok) throw new Error(`Route API failed: ${response.status}`);
-    const result = (await response.json()) as RouteDistance | null;
-    exactCache[cacheKey] = result;
-    saveCache(EXACT_CACHE_KEY, exactCache);
-    return result;
-  } catch (error) {
-    console.warn("[DISTANCE] Erro rota exata Google", { origin, destination, error });
-    return null;
-  }
-}
-
-/**
  * Get cached approximate route for display (no API call).
  */
 export function getCachedApproximateRoute(
@@ -451,20 +417,7 @@ export function getCachedApproximateRoute(
   return undefined; // not cached yet
 }
 
-/**
- * Get cached exact route for display (no API call).
- */
-export function getCachedExactRoute(
-  technician: Technician,
-  service: ConfirmedService,
-): RouteDistance | null | undefined {
-  const cacheKey = getCacheKey(technician, service);
-  const cache = loadCache<RouteDistance | null>(EXACT_CACHE_KEY);
-  if (cacheKey in cache) return cache[cacheKey];
-  return undefined; // not cached yet
-}
-
-export type RouteMode = "none" | "approximate" | "exact";
+export type RouteMode = "none" | "approximate";
 
 export interface RouteInfo {
   distance: RouteDistance | null;

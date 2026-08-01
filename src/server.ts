@@ -10,15 +10,6 @@ type ServerEntry = {
 interface RouteDistanceRequest {
   origin?: unknown;
   destination?: unknown;
-  mode?: "approximate" | "exact" | "auto";
-}
-
-function getEnvValue(env: unknown, key: string): string {
-  if (env && typeof env === "object" && key in env) {
-    const value = (env as Record<string, unknown>)[key];
-    return typeof value === "string" ? value.trim() : "";
-  }
-  return process.env[key]?.trim() ?? "";
 }
 
 function formatDistance(meters: number): string {
@@ -38,34 +29,77 @@ function formatDuration(duration: string): string {
 
 const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
 
+let lastNominatimCall = 0;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Nominatim com rate limit (1 req/s) e retry em 429. */
+async function nominatimGeocode(query: string): Promise<{ lat: number; lng: number } | null> {
+  const wait = Math.max(0, 1100 - (Date.now() - lastNominatimCall));
+  if (wait > 0) await sleep(wait);
+  lastNominatimCall = Date.now();
+
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`;
+  const headers = {
+    "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)",
+    "Accept-Language": "pt-BR",
+  };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, { headers, signal: controller.signal });
+    if (res.status === 429) {
+      // Rate limit: aguarda e tenta uma única vez antes de desistir.
+      await sleep(2500);
+      const retry = await fetch(url, { headers, signal: controller.signal });
+      if (!retry.ok) return null;
+      const arr = (await retry.json()) as { lat: string; lon: string }[];
+      if (!arr[0]) return null;
+      return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+    }
+    if (!res.ok) return null;
+    const arr = (await res.json()) as { lat: string; lon: string }[];
+    if (!arr[0]) return null;
+    return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Fallback: Photon (OSM/komoot), sem chave, usado quando o Nominatim falha. */
+async function photonGeocode(query: string): Promise<{ lat: number; lng: number } | null> {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1&countrycode=br`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      features?: { geometry?: { coordinates?: [number, number] } }[];
+    };
+    const coords = data.features?.[0]?.geometry?.coordinates;
+    if (!coords) return null;
+    return { lat: coords[1], lng: coords[0] };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
   const key = query.toLocaleLowerCase("pt-BR");
   if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)",
-        "Accept-Language": "pt-BR",
-      },
-    });
-    if (!res.ok) {
-      geocodeCache.set(key, null);
-      return null;
-    }
-    const arr = (await res.json()) as { lat: string; lon: string }[];
-    if (!arr[0]) {
-      geocodeCache.set(key, null);
-      return null;
-    }
-    const coord = { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
-    geocodeCache.set(key, coord);
-    return coord;
-  } catch (error) {
-    console.warn("[DISTANCE] geocode falhou", { query, error });
-    geocodeCache.set(key, null);
-    return null;
-  }
+  const result = (await nominatimGeocode(query)) ?? (await photonGeocode(query));
+  geocodeCache.set(key, result);
+  return result;
 }
 
 function haversineMeters(
@@ -83,48 +117,7 @@ function haversineMeters(
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-async function computeWithGoogle(
-  origin: string,
-  destination: string,
-  apiKey: string,
-  referer: string,
-) {
-  const response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Referer: referer,
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
-    },
-    body: JSON.stringify({
-      origin: { address: `${origin}, Brasil` },
-      destination: { address: `${destination}, Brasil` },
-      travelMode: "DRIVE",
-      routingPreference: "TRAFFIC_UNAWARE",
-      languageCode: "pt-BR",
-      units: "METRIC",
-    }),
-  });
-  if (!response.ok) {
-    console.warn("[DISTANCE] Google Routes falhou", {
-      status: response.status,
-      body: await response.text(),
-    });
-    return null;
-  }
-  const payload = (await response.json()) as {
-    routes?: { distanceMeters?: number; duration?: string }[];
-  };
-  const route = payload.routes?.[0];
-  if (!route?.distanceMeters || !route.duration) return null;
-  return {
-    distanceMeters: route.distanceMeters,
-    distanceText: formatDistance(route.distanceMeters),
-    durationText: formatDuration(route.duration),
-  };
-}
-
+/** Rota aproximada (grátis): geocoding OSM + distância haversine. */
 async function computeWithFallback(origin: string, destination: string) {
   const [o, d] = await Promise.all([geocodeAddress(origin), geocodeAddress(destination)]);
   if (!o || !d) return null;
@@ -140,31 +133,13 @@ async function computeWithFallback(origin: string, destination: string) {
   };
 }
 
-async function handleRouteDistance(request: Request, env: unknown): Promise<Response> {
+async function handleRouteDistance(request: Request): Promise<Response> {
   const body = (await request.json()) as RouteDistanceRequest;
   const origin = typeof body.origin === "string" ? body.origin.trim() : "";
   const destination = typeof body.destination === "string" ? body.destination.trim() : "";
-  const mode = body.mode ?? "auto";
   if (!origin || !destination) return Response.json(null);
 
-  const apiKey = getEnvValue(env, "GOOGLE_MAPS_API_KEY");
-  const referer = getEnvValue(env, "GOOGLE_MAPS_REFERER") || "http://127.0.0.1:8080/";
-
   try {
-    if (mode === "exact") {
-      if (!apiKey) return Response.json(null);
-      const result = await computeWithGoogle(origin, destination, apiKey, referer);
-      return Response.json(result);
-    }
-    if (mode === "approximate") {
-      const fallback = await computeWithFallback(origin, destination);
-      return Response.json(fallback);
-    }
-    // mode === "auto" (legacy)
-    if (apiKey) {
-      const result = await computeWithGoogle(origin, destination, apiKey, referer);
-      if (result) return Response.json(result);
-    }
     const fallback = await computeWithFallback(origin, destination);
     return Response.json(fallback);
   } catch (error) {
@@ -676,7 +651,7 @@ export default {
     try {
       const url = new URL(request.url);
       if (request.method === "POST" && url.pathname === "/api/route-distance") {
-        return await handleRouteDistance(request, env);
+        return await handleRouteDistance(request);
       }
       if (request.method === "POST" && url.pathname === "/api/geocode-fixed-address") {
         return await handleFixedAddressGeocode(request);

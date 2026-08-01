@@ -16,6 +16,7 @@ import {
   ClipboardCopy,
   MoreVertical,
   Headphones,
+  CalendarPlus,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { copyShortcutToClipboard, sapWorkspace, type SapShortcut } from "@/services/sap-workspace";
@@ -39,6 +40,7 @@ const items = [
   { title: "Chamados e atendimentos", url: "/chamados", icon: Headphones },
   { title: "Distribuição de atendimentos", url: "/distribuicao", icon: Share2 },
   { title: "Roteirização por técnico", url: "/roteirizacao", icon: Navigation2 },
+  { title: "Criação de Planner", url: "/planner", icon: CalendarPlus },
   { title: "Tarefas", url: "/tarefas", icon: ListTodo },
   { title: "Solicitações Adm", url: "/solicitacoes", icon: ClipboardList },
   { title: "Configurações de mensagens", url: "/configuracoes", icon: Settings },
