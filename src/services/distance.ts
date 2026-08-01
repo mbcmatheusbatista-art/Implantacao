@@ -152,7 +152,7 @@ export function extractCity(query: string): string {
   return normalize(cleaned.toLocaleLowerCase("pt-BR"));
 }
 
-let lastNominatimCall = 0;
+let lastPhotonCall = 0;
 
 // Map of state → capital city key (normalized for brCityCoords lookup)
 const STATE_CAPITAL: Record<string, string> = {
@@ -192,16 +192,16 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
     return staticCoords;
   }
 
-  // Fallback to Nominatim with rate limiting (1 req/s)
+  // Fallback to Photon with rate limiting (1 req/s)
   const now = Date.now();
-  const elapsed = now - lastNominatimCall;
+  const elapsed = now - lastPhotonCall;
   if (elapsed < 1100) {
     await new Promise((r) => setTimeout(r, 1100 - elapsed));
   }
-  lastNominatimCall = Date.now();
+  lastPhotonCall = Date.now();
 
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`;
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1&countrycode=br&lang=pt`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, {
@@ -213,9 +213,12 @@ async function geocodeAddress(query: string): Promise<{ lat: number; lng: number
     });
     clearTimeout(timer);
     if (!res.ok) return null;
-    const arr = (await res.json()) as { lat: string; lon: string }[];
-    if (!arr[0]) return null;
-    return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+    const data = (await res.json()) as {
+      features?: { geometry?: { coordinates?: [number, number] } }[];
+    };
+    const coords = data.features?.[0]?.geometry?.coordinates;
+    if (!coords) return null;
+    return { lat: coords[1], lng: coords[0] };
   } catch {
     // Last resort: use state capital coordinates as rough estimate
     const parts = lookupKey.split(", ");
@@ -258,19 +261,19 @@ export function getApproximateCoordinates(addressOrCity: string): { lat: number;
 }
 
 /**
- * Geocode a full street address via Nominatim (street-level).
+ * Geocode a full street address via Photon (street-level).
  * Bypasses brCityCoords for true street-level coordinates.
  */
-let lastNominatimCallFull = 0;
+let lastPhotonCallFull = 0;
 export async function geocodeFullAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   const now = Date.now();
-  const elapsed = now - lastNominatimCallFull;
+  const elapsed = now - lastPhotonCallFull;
   if (elapsed < 1100) {
     await new Promise((r) => setTimeout(r, 1100 - elapsed));
   }
-  lastNominatimCallFull = Date.now();
+  lastPhotonCallFull = Date.now();
   try {
-    // Resolve through the app server. Browser-side Nominatim requests are
+    // Resolve through the app server. Browser-side Photon requests are
     // frequently blocked by CORS, which previously left fixed technician
     // addresses without a map marker.
     const localResponse = await fetch("/api/geocode-fixed-address", {
@@ -290,7 +293,7 @@ export async function geocodeFullAddress(address: string): Promise<{ lat: number
     }
 
     // Retained as a development fallback when the local API is unavailable.
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(address)}`;
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&countrycode=br&lang=pt`;
     const res = await fetch(url, {
       headers: {
         "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)",
@@ -298,9 +301,12 @@ export async function geocodeFullAddress(address: string): Promise<{ lat: number
       },
     });
     if (!res.ok) return null;
-    const arr = (await res.json()) as { lat: string; lon: string }[];
-    if (!arr[0]) return null;
-    return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+    const data = (await res.json()) as {
+      features?: { geometry?: { coordinates?: [number, number] } }[];
+    };
+    const coords = data.features?.[0]?.geometry?.coordinates;
+    if (!coords) return null;
+    return { lat: coords[1], lng: coords[0] };
   } catch {
     return null;
   }

@@ -214,7 +214,7 @@ type GeocodeSearchStatus =
 
 /**
  * Geocodifica qualquer endereço digitado (mesmo sem cliente no mapa) com
- * debounce, via endpoint do servidor (Nominatim + fallback Photon). Expõe
+ * debounce, via endpoint do servidor (Photon/komoot). Expõe
  * estados de carregamento e "não encontrado" para feedback na lista.
  */
 function useDebouncedGeocode(query: string): GeocodeSearchStatus {
@@ -634,6 +634,57 @@ export function RoteirizacaoMap({
     routeLinesRef.current = [];
   }
 
+  // Desenha a rota real entre técnico e cliente selecionados usando o OSRM
+  // (Open Source Routing Machine, servidor público e gratuito, sem chave).
+  useEffect(() => {
+    if (!mapReady || !selectedTech || !selectedClient) return;
+    const map = mapInstanceRef.current;
+    const L = leafletRef.current;
+    if (!map || !L) return;
+
+    const start = (selectedTech.addressLat != null && selectedTech.addressLng != null)
+      ? { lat: selectedTech.addressLat, lng: selectedTech.addressLng }
+      : points.find((p) => p.type === "tech" && p.techId === selectedTech.id) || null;
+    const end = points.find((p) => p.type === "client" && p.clientId === selectedClient.id) || null;
+    if (!start || !end) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+
+    (async () => {
+      // OSRM recebe [longitude, latitude] separados por ';'.
+      const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as {
+          routes?: { geometry?: { coordinates?: [number, number][] } }[];
+        };
+        const coordinates = data.routes?.[0]?.geometry?.coordinates;
+        if (cancelled || !coordinates || coordinates.length === 0) return;
+        // OSRM retorna [longitude, latitude]; o Leaflet espera [latitude, longitude].
+        const latLngs: [number, number][] = coordinates.map(([lng, lat]) => [lat, lng]);
+        removeRoute();
+        if (cancelled) return;
+        const line = L.polyline(latLngs, { color: "#2A82C5", weight: 5, opacity: 0.9 }).addTo(map);
+        routeLinesRef.current.push(line);
+        map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
+      } catch (error) {
+        console.warn("[MAPA] Erro ao buscar rota no OSRM:", error);
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
+      removeRoute();
+    };
+  }, [mapReady, selectedTech, selectedClient, points]);
+
   const visiblePoints = useMemo(() => {
     if (!clientSearchActive || clientFilterIds.size === 0) return points;
     return points.filter((p) => p.type === "tech" || (p.type === "client" && p.clientId && clientFilterIds.has(p.clientId)));
@@ -669,9 +720,20 @@ export function RoteirizacaoMap({
       });
       map.whenReady(() => map.invalidateSize());
 
-      const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://openstreetmap.org/copyright">OSM</a>',
-        maxZoom: 19,
+      const stadiaAttribution =
+        '&copy; <a href="https://www.stadiamaps.com/" target="_blank" rel="noopener">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/about" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a>';
+      const stadiaApiKey = ((import.meta.env?.VITE_STADIA_MAPS_API_KEY as string | undefined) || "").trim();
+      const stadiaTileUrl = (style: "alidade_smooth" | "alidade_smooth_dark") => {
+        const base = `https://tiles.stadiamaps.com/tiles/${style}/{z}/{x}/{y}{r}.png`;
+        return stadiaApiKey ? `${base}?api_key=${encodeURIComponent(stadiaApiKey)}` : base;
+      };
+      const stadiaLight = L.tileLayer(stadiaTileUrl("alidade_smooth"), {
+        attribution: stadiaAttribution,
+        maxZoom: 20,
+      });
+      const stadiaDark = L.tileLayer(stadiaTileUrl("alidade_smooth_dark"), {
+        attribution: stadiaAttribution,
+        maxZoom: 20,
       });
       const satellite = L.layerGroup([
         L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
@@ -683,10 +745,10 @@ export function RoteirizacaoMap({
           maxZoom: 19,
         }),
       ]);
-      osm.addTo(map);
+      stadiaLight.addTo(map);
 
       L.control.layers(
-        { "Mapa": osm, "Satélite": satellite },
+        { "Mapa (Claro)": stadiaLight, "Mapa (Escuro)": stadiaDark, "Satélite": satellite },
         {},
         { position: "bottomleft" },
       ).addTo(map);
@@ -1482,7 +1544,7 @@ export function RoteirizacaoMap({
             />
             {topSearchOpen && topSearchQuery && (
               <div className="absolute inset-x-0 top-full mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover shadow-lg">
-                {topSearchResults.length === 0 && topGeocode.status !== "notfound" ? (
+                {topSearchResults.length === 0 && topGeocode.status === "idle" ? (
                   <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado encontrado.</p>
                 ) : topSearchResults.map((result) => (
                   <button
@@ -1599,7 +1661,7 @@ export function RoteirizacaoMap({
                 </div>
                 {shortcutSearchQuery && (
                   <div className="mt-2 max-h-64 overflow-y-auto rounded border">
-                    {shortcutSearchResults.length === 0 && shortcutGeocode.status !== "notfound" ? (
+                    {shortcutSearchResults.length === 0 && shortcutGeocode.status === "idle" ? (
                       <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum resultado encontrado.</p>
                     ) : shortcutSearchResults.map((result) => (
                       <button

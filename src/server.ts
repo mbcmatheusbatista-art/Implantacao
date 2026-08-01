@@ -29,13 +29,86 @@ function formatDuration(duration: string): string {
 
 const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
 
-let lastNominatimCall = 0;
+let lastPhotonCall = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Nominatim com rate limit (1 req/s) e retry em 429. */
+/** Photon (OSM/komoot), sem chave: geocoding por texto. */
+async function photonGeocode(query: string): Promise<{ lat: number; lng: number } | null> {
+  const wait = Math.max(0, 1100 - (Date.now() - lastPhotonCall));
+  if (wait > 0) await sleep(wait);
+  lastPhotonCall = Date.now();
+
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1&countrycode=br&lang=pt`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)" },
+    });
+    if (res.status === 429) {
+      // Rate limit: aguarda e tenta uma única vez antes de desistir.
+      await sleep(2500);
+      const retry = await fetch(url, {
+        signal: controller.signal,
+        headers: { "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)" },
+      });
+      if (!retry.ok) return null;
+      const data = (await retry.json()) as {
+        features?: { geometry?: { coordinates?: [number, number] } }[];
+      };
+      const coords = data.features?.[0]?.geometry?.coordinates;
+      if (!coords) return null;
+      return { lat: coords[1], lng: coords[0] };
+    }
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      features?: { geometry?: { coordinates?: [number, number] } }[];
+    };
+    const coords = data.features?.[0]?.geometry?.coordinates;
+    if (!coords) return null;
+    return { lat: coords[1], lng: coords[0] };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Photon (OSM/komoot), sem chave: reverse geocoding por coordenada. */
+async function photonReverseGeocode(lat: number, lng: number): Promise<string | null> {
+  const wait = Math.max(0, 1100 - (Date.now() - lastPhotonCall));
+  if (wait > 0) await sleep(wait);
+  lastPhotonCall = Date.now();
+
+  const url = `https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}&lang=pt`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      features?: { properties?: { name?: string; city?: string; state?: string; country?: string } }[];
+    };
+    const props = data.features?.[0]?.properties;
+    if (!props) return null;
+    return [props.name, props.city, props.state, props.country].filter(Boolean).join(", ") || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let lastNominatimCall = 0;
+
+/** Fallback gratuito: Nominatim, usado quando o Photon falha ou está fora do ar. */
 async function nominatimGeocode(query: string): Promise<{ lat: number; lng: number } | null> {
   const wait = Math.max(0, 1100 - (Date.now() - lastNominatimCall));
   if (wait > 0) await sleep(wait);
@@ -70,34 +143,10 @@ async function nominatimGeocode(query: string): Promise<{ lat: number; lng: numb
   }
 }
 
-/** Fallback: Photon (OSM/komoot), sem chave, usado quando o Nominatim falha. */
-async function photonGeocode(query: string): Promise<{ lat: number; lng: number } | null> {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1&countrycode=br`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)" },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      features?: { geometry?: { coordinates?: [number, number] } }[];
-    };
-    const coords = data.features?.[0]?.geometry?.coordinates;
-    if (!coords) return null;
-    return { lat: coords[1], lng: coords[0] };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
   const key = query.toLocaleLowerCase("pt-BR");
   if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
-  const result = (await nominatimGeocode(query)) ?? (await photonGeocode(query));
+  const result = (await photonGeocode(query)) ?? (await nominatimGeocode(query));
   geocodeCache.set(key, result);
   return result;
 }
@@ -157,6 +206,17 @@ async function handleFixedAddressGeocode(request: Request): Promise<Response> {
   // This runs server-side so the map does not depend on browser CORS rules.
   const coordinates = await geocodeAddress(address);
   return Response.json({ coordinates });
+}
+
+async function handleReverseGeocode(request: Request): Promise<Response> {
+  const body = (await request.json()) as { lat?: unknown; lng?: unknown };
+  const lat = typeof body.lat === "number" ? body.lat : Number(body.lat);
+  const lng = typeof body.lng === "number" ? body.lng : Number(body.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return Response.json({ address: null }, { status: 400 });
+  }
+  const address = await photonReverseGeocode(lat, lng);
+  return Response.json({ address });
 }
 
 // ---------------------------------------------------------------------------
@@ -496,7 +556,7 @@ async function handleImportTecnicos(request: Request, env: unknown): Promise<Res
     let latitude = sanitizeFloat(row.latitude);
     let longitude = sanitizeFloat(row.longitude);
 
-    // Geocode address via Nominatim if no coordinates provided
+    // Geocode address via Photon if no coordinates provided
     if ((latitude === null || longitude === null) && row.endereco && typeof row.endereco === "string" && row.endereco.trim()) {
       const geoQuery = `${row.endereco}, ${row.cidade || ""}, ${row.uf || ""}, Brasil`
         .replace(/\s+/g, " ")
@@ -655,6 +715,9 @@ export default {
       }
       if (request.method === "POST" && url.pathname === "/api/geocode-fixed-address") {
         return await handleFixedAddressGeocode(request);
+      }
+      if (request.method === "POST" && url.pathname === "/api/geocode-reverse") {
+        return await handleReverseGeocode(request);
       }
 
       // D1 tecnicos CRUD
