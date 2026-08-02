@@ -330,8 +330,8 @@ const SEED: SeedItem[] = [
   {
     firstName: "ricardo",
     keywords: ["RICARDO M DA ROCHA", "RICARDO M ROCHA", "RICARDO M  DA ROCHA"],
-    address: "Alameda Denilson de Paula, nº 69, Buritis, Uberlândia - MG, CEP 38410-008.",
-    lat: -18.9464732, lng: -48.231703,
+    address: "R. Denílson de Paula, 69 - Granada, Uberlândia - MG, 38410-008",
+    lat: -18.9466109, lng: -48.2309708,
   },
   {
     firstName: "ricardo",

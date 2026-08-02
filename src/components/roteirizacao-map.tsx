@@ -17,6 +17,7 @@ import { getGreetingByCurrentTime } from "@/utils/greeting";
 import { normalizeText, stripFormatMarkers } from "@/utils/normalize-text";
 import { equipmentLabel } from "@/utils/normalize-equipment";
 import { findFixedTechnicianLocation } from "@/services/seed-data";
+import { fetchRoute } from "@/services/route-provider";
 import { GripVertical, Search, X } from "lucide-react";
 
 const STATE_REGION: Record<string, string> = {
@@ -155,6 +156,23 @@ function getStatusColor(status: string): string {
   if (status === "AGENDANDO") return "#000000";
   if (status === "AGENDADO") return "#2563eb";
   return "";
+}
+
+function formatRouteDistance(meters: number): string {
+  if (!Number.isFinite(meters) || meters <= 0) return "";
+  if (meters < 1000) return `${Math.round(meters).toLocaleString("pt-BR")} m`;
+  const km = meters / 1000;
+  const value = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
+  return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km`;
+}
+
+function formatRouteDuration(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "";
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.round((totalSeconds % 3600) / 60);
+  if (hours <= 0) return `${minutes} min`;
+  if (minutes <= 0) return `${hours}h`;
+  return `${hours}h${String(minutes).padStart(2, "0")}`;
 }
 
 type MapSearchResult =
@@ -570,8 +588,13 @@ export function RoteirizacaoMap({
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const selectedTechIdRef = useRef<string | null>(null);
   const routeLinesRef = useRef<L.Polyline[]>([]);
+  const routeInfoMarkersRef = useRef<L.Marker[]>([]);
+  const [routeInfo, setRouteInfo] = useState<{ distanceText: string; durationText: string } | null>(null);
   const [techDestAddr, setTechDestAddr] = useState("");
   const techDestInputRef = useRef<HTMLInputElement>(null);
+  const [routeNotice, setRouteNotice] = useState<string | null>(null);
+  const routeNoticeTimerRef = useRef<number | null>(null);
+  const [baseLayerName, setBaseLayerName] = useState("Mapa (Claro)");
 
   const selectedTech = useMemo(
     () => technicians.find((t) => t.id === selectedTechId) || null,
@@ -590,12 +613,9 @@ export function RoteirizacaoMap({
   function openSelectedClientRoute() {
     if (!selectedRouteUrl) return;
     window.open(selectedRouteUrl, "_blank", "noopener,noreferrer");
-    // The action is complete: close both map controls. They are shown again
-    // only after the user starts a new technician → client selection.
-    setSelectedClientId(null);
-    setSelectedTechId(null);
-    setTechDestAddr("");
-    removeRoute();
+    // Apenas abre o Google Maps em outra aba. A rota visual continua traçada
+    // no mapa e o painel permanece aberto; ela só é removida quando o usuário
+    // clicar em uma área vazia do mapa ou em "Cancelar".
   }
 
   function handleTechRoute() {
@@ -632,10 +652,22 @@ export function RoteirizacaoMap({
   function removeRoute() {
     for (const line of routeLinesRef.current) line.remove();
     routeLinesRef.current = [];
+    for (const marker of routeInfoMarkersRef.current) marker.remove();
+    routeInfoMarkersRef.current = [];
+    setRouteInfo(null);
   }
 
-  // Desenha a rota real entre técnico e cliente selecionados usando o OSRM
-  // (Open Source Routing Machine, servidor público e gratuito, sem chave).
+  function showRouteNotice(message: string) {
+    setRouteNotice(message);
+    if (routeNoticeTimerRef.current !== null) window.clearTimeout(routeNoticeTimerRef.current);
+    routeNoticeTimerRef.current = window.setTimeout(() => {
+      setRouteNotice(null);
+      routeNoticeTimerRef.current = null;
+    }, 1500);
+  }
+
+  // Desenha a rota real entre técnico e cliente selecionados usando o
+  // provedor configurado (padrão: OSRM público, sem chave).
   useEffect(() => {
     if (!mapReady || !selectedTech || !selectedClient) return;
     const map = mapInstanceRef.current;
@@ -649,39 +681,47 @@ export function RoteirizacaoMap({
     if (!start || !end) return;
 
     let cancelled = false;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
 
     (async () => {
-      // OSRM recebe [longitude, latitude] separados por ';'.
-      const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
       try {
-        const response = await fetch(url, { signal: controller.signal });
-        if (!response.ok || cancelled) return;
-        const data = (await response.json()) as {
-          routes?: { geometry?: { coordinates?: [number, number][] } }[];
-        };
-        const coordinates = data.routes?.[0]?.geometry?.coordinates;
-        if (cancelled || !coordinates || coordinates.length === 0) return;
-        // OSRM retorna [longitude, latitude]; o Leaflet espera [latitude, longitude].
-        const latLngs: [number, number][] = coordinates.map(([lng, lat]) => [lat, lng]);
+        const result = await fetchRoute(start, end);
+        if (cancelled) return;
+        if (!result || result.latLngs.length === 0) {
+          showRouteNotice("Servidor de rota temporariamente indisponível, tente novamente em instantes.");
+          return;
+        }
         removeRoute();
         if (cancelled) return;
-        const line = L.polyline(latLngs, { color: "#2A82C5", weight: 5, opacity: 0.9 }).addTo(map);
+        const line = L.polyline(result.latLngs, { color: "#2A82C5", weight: 5, opacity: 0.9 }).addTo(map);
         routeLinesRef.current.push(line);
-        map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
+        // Quilometragem e tempo reais da rota, fornecidos pelo provedor ativo.
+        const distanceText = formatRouteDistance(result.distanceMeters);
+        const durationText = formatRouteDuration(result.durationSeconds);
+        if (distanceText || durationText) {
+          const routeLabel = [distanceText, ...(durationText ? [`~${durationText}`] : [])].join(" · ");
+          setRouteInfo({ distanceText, durationText });
+          const mid = result.latLngs[Math.floor(result.latLngs.length / 2)];
+          const pillIcon = L.divIcon({
+            className: "",
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+            html: `<div class="route-info-pill">${routeLabel}</div>`,
+          });
+          const pillMarker = L.marker(mid, { icon: pillIcon, interactive: false }).addTo(map);
+          routeInfoMarkersRef.current.push(pillMarker);
+        }
+        // Não altera o zoom/enquadramento do mapa ao traçar a rota: o usuário
+        // permanece exatamente onde estava.
       } catch (error) {
-        console.warn("[MAPA] Erro ao buscar rota no OSRM:", error);
-      } finally {
-        clearTimeout(timer);
+        console.warn("[MAPA] Erro ao buscar rota:", error);
+        if (!cancelled) {
+          showRouteNotice("Servidor de rota temporariamente indisponível, tente novamente em instantes.");
+        }
       }
     })();
 
     return () => {
       cancelled = true;
-      controller.abort();
-      clearTimeout(timer);
-      removeRoute();
     };
   }, [mapReady, selectedTech, selectedClient, points]);
 
@@ -752,6 +792,7 @@ export function RoteirizacaoMap({
         {},
         { position: "bottomleft" },
       ).addTo(map);
+      map.on("baselayerchange", (e: L.LayersControlEvent) => setBaseLayerName(e.name));
 
       L.control.zoom({ position: "topright" }).addTo(map);
 
@@ -1424,6 +1465,9 @@ export function RoteirizacaoMap({
     function onMapClick(event: L.LeafletMouseEvent) {
       const target = event.originalEvent?.target as HTMLElement | null;
       if (target?.closest?.(".leaflet-marker-icon, .leaflet-popup, .leaflet-control")) return;
+      // Ao limpar um pino/busca, mantém a posição atual do mapa em vez de
+      // refazer o enquadramento em todos os pontos (que resetaria o zoom).
+      preserveViewportOnNextMarkerUpdateRef.current = true;
       setSelectedTechId(null);
       setSelectedClientId(null);
       setAddressPin(null);
@@ -1601,7 +1645,7 @@ export function RoteirizacaoMap({
             )}
           </div>
         </div>
-        <div className="relative">
+        <div className={`relative${baseLayerName === "Mapa (Claro)" ? " map-mode-light" : ""}`}>
           <div
             ref={mapRef}
             style={{
@@ -1747,6 +1791,13 @@ export function RoteirizacaoMap({
               <div className="text-muted-foreground truncate" title={selectedClient.fullAddress}>
                 Destino: {selectedClient.fullAddress || "endereço do cliente indisponível"}
               </div>
+              {routeInfo && (
+                <div className="mt-1 font-semibold text-primary">
+                  {routeInfo.distanceText ? `Distância: ${routeInfo.distanceText}` : ""}
+                  {routeInfo.distanceText && routeInfo.durationText ? " · " : ""}
+                  {routeInfo.durationText ? `Tempo: ~${routeInfo.durationText}` : ""}
+                </div>
+              )}
               <div className="mt-2 flex gap-1.5">
                 <button
                   type="button"
@@ -1764,6 +1815,19 @@ export function RoteirizacaoMap({
                   Cancelar
                 </button>
               </div>
+            </div>
+          )}
+          {routeNotice && (
+            <div
+              className="absolute bottom-3 right-3 z-[1200] rounded-md px-3 py-1.5 text-[12px] font-semibold shadow-md"
+              style={{
+                color: baseLayerName === "Mapa (Claro)" ? "#1a1a1a" : "#ffffff",
+                backgroundColor: baseLayerName === "Mapa (Claro)" ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.72)",
+                border: baseLayerName === "Mapa (Claro)" ? "1px solid rgba(0,0,0,0.2)" : "1px solid rgba(255,255,255,0.25)",
+                pointerEvents: "none",
+              }}
+            >
+              {routeNotice}
             </div>
           )}
         </div>
@@ -1918,10 +1982,33 @@ export function RoteirizacaoMap({
           padding: 4px 10px !important;
           font-size: 12px !important;
           font-weight: 600 !important;
+          white-space: nowrap !important;
           box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
         }
-        .route-info-tooltip .leaflet-tooltip-arrow {
+        .route-info-tooltip.leaflet-tooltip-top::before {
           border-top-color: rgba(59, 130, 246, 0.95) !important;
+        }
+        .route-info-pill {
+          background: rgba(37, 99, 235, 0.9);
+          border: 2px solid rgba(255, 255, 255, 0.9);
+          color: #ffffff;
+          font-size: 13px;
+          font-weight: 700;
+          border-radius: 9999px;
+          padding: 2px 12px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+          white-space: nowrap;
+          position: relative;
+          transform: translate(-50%, -100%);
+          pointer-events: none;
+          font-family: Arial, sans-serif;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+        }
+        .map-mode-light .route-info-pill {
+          background: rgba(255, 255, 255, 0.95);
+          border: 2px solid rgba(220, 38, 38, 0.55);
+          color: #dc2626;
+          text-shadow: none;
         }
       `}</style>
     </div>
