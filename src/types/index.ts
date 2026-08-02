@@ -81,6 +81,10 @@ export interface Technician {
   address?: string;
   addressLat?: number;
   addressLng?: number;
+  /** CNPJ (razão social) informado no cadastro via Supabase. */
+  cnpj?: string;
+  /** Endereço cru (logradouro) como digitado/importado, sem nº/bairro/cidade. */
+  addressOriginal?: string;
 }
 
 export interface Assignment {

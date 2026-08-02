@@ -17,6 +17,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Download,
+  List,
   Loader2,
   MessageCircle,
   Phone,
@@ -31,6 +32,8 @@ import { buildWhatsAppUrl } from "@/utils/whatsapp-url";
 import { importarTecnicosEmLote } from "@/services/api";
 import { applySeedAddresses } from "@/services/seed-data";
 import { geocodeFullAddress } from "@/services/distance";
+import TecnicosCadastroDialog from "@/components/tecnicos-cadastro-dialog";
+import TecnicosCrudDialog from "@/components/tecnicos-crud-dialog";
 import type { Technician } from "@/types";
 
 export const Route = createFileRoute("/tecnicos")({
@@ -50,11 +53,15 @@ function TechniciansPage() {
   const store = useAppStore();
   const techs = store.technicians;
   const [open, setOpen] = useState(false);
+  const [cadastroOpen, setCadastroOpen] = useState(false);
+  const [crudOpen, setCrudOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const importedColumns = store.diagnostics.technicians?.columnsMapped ?? {};
-  const columnLabel = (field: "technician" | "phone" | "city" | "state" | "address" | "quantity", fallback: string) =>
-    importedColumns[field] || fallback;
+  const columnLabel = (
+    field: "technician" | "phone" | "city" | "state" | "address" | "quantity",
+    fallback: string,
+  ) => importedColumns[field] || fallback;
 
   // Correct legacy values already stored in the browser as soon as this page
   // opens. Matching by first name (for example the two Diegos) is never used.
@@ -63,20 +70,42 @@ function TechniciansPage() {
     const corrected = applySeedAddresses(techs);
     const hasCorrection = corrected.some((technician, index) => {
       const current = techs[index];
-      return technician.address !== current.address
-        || technician.addressLat !== current.addressLat
-        || technician.addressLng !== current.addressLng
-        || technician.cityOriginal !== current.cityOriginal
-        || technician.cityNormalized !== current.cityNormalized
-        || technician.state !== current.state;
+      return (
+        technician.address !== current.address ||
+        technician.addressLat !== current.addressLat ||
+        technician.addressLng !== current.addressLng ||
+        technician.cityOriginal !== current.cityOriginal ||
+        technician.cityNormalized !== current.cityNormalized ||
+        technician.state !== current.state
+      );
     });
     if (!hasCorrection) return;
     store.setTechnicians(
       corrected,
       store.meta?.technicians || { fileName: "", count: corrected.length },
-      store.diagnostics?.technicians || { fileName: "", columnsFound: [], columnsMapped: {}, columnsUnmapped: [], rowsImported: corrected.length, rowsSkipped: 0, invalidPhones: 0, emptyPlates: 0, emptyNames: 0, emptyAddresses: 0, equipmentUnknown: 0, quantityUnparsed: 0, groupedContacts: 0, nameConflicts: 0, timestamp: Date.now(), headerRow: 0 },
+      store.diagnostics?.technicians || {
+        fileName: "",
+        columnsFound: [],
+        columnsMapped: {},
+        columnsUnmapped: [],
+        rowsImported: corrected.length,
+        rowsSkipped: 0,
+        invalidPhones: 0,
+        emptyPlates: 0,
+        emptyNames: 0,
+        emptyAddresses: 0,
+        equipmentUnknown: 0,
+        quantityUnparsed: 0,
+        groupedContacts: 0,
+        nameConflicts: 0,
+        timestamp: Date.now(),
+        headerRow: 0,
+      },
     );
   }, [techs, store]);
+
+  // Carrega os técnicos cadastrados no Supabase globalmente (__root), não mais
+  // nesta página — assim aparecem no mapa/roteirização em qualquer máquina.
 
   const d1Active = useMemo(() => techs.some((t) => !!t.address), [techs]);
   const techsComEndereco = useMemo(() => techs.filter((t) => !!t.address), [techs]);
@@ -122,16 +151,25 @@ function TechniciansPage() {
             )}
           </p>
         </div>
-        <Button onClick={() => setOpen(true)}>
-          <Upload className="w-4 h-4 mr-2" /> Importar
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCrudOpen(true)}>
+            <List className="w-4 h-4 mr-2" /> Listar técnicos
+          </Button>
+          <Button variant="outline" onClick={() => setCadastroOpen(true)}>
+            <User className="w-4 h-4 mr-2" /> Cadastrar técnico
+          </Button>
+          <Button onClick={() => setOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" /> Importar
+          </Button>
+        </div>
       </div>
 
       {d1Active && (
         <Card className="border-green-200 bg-green-50/30 dark:bg-green-950/10 dark:border-green-900">
           <CardContent className="py-3 flex items-center gap-2 text-green-700 dark:text-green-400 text-sm">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
-            Endereços carregados do servidor ({techsComEndereco.length} técnicos com endereço real, {techs.length - techsComEndereco.length} com localização aproximada por cidade).
+            Endereços carregados do servidor ({techsComEndereco.length} técnicos com endereço real,{" "}
+            {techs.length - techsComEndereco.length} com localização aproximada por cidade).
           </CardContent>
         </Card>
       )}
@@ -140,7 +178,8 @@ function TechniciansPage() {
         <Card className="border-amber-200 bg-amber-50/30 dark:bg-amber-950/10 dark:border-amber-900">
           <CardContent className="py-3 flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            Servidor de endereços indisponível. Cadastre endereços na importação para ativar a localização real no mapa.
+            Servidor de endereços indisponível. Cadastre endereços na importação para ativar a
+            localização real no mapa.
           </CardContent>
         </Card>
       )}
@@ -184,11 +223,12 @@ function TechniciansPage() {
                     <th className="p-2">{columnLabel("city", "Cidade")}</th>
                     <th className="p-2">{columnLabel("state", "UF")}</th>
                     <th className="p-2">{columnLabel("address", "Endereço")}</th>
+                    <th className="p-2">CNPJ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((t) => {
-                    return(
+                    return (
                       <tr key={t.id} className="border-t hover:bg-muted/30">
                         <td className="p-2">{t.nameOriginal || "—"}</td>
                         <td className="p-2">
@@ -197,7 +237,10 @@ function TechniciansPage() {
                             const url = phone ? buildWhatsAppUrl(phone, "") : null;
                             return url ? (
                               <a href={url} target="_blank" rel="noopener noreferrer">
-                                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                                <Button
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                >
                                   <MessageCircle className="w-4 h-4" />
                                 </Button>
                               </a>
@@ -208,11 +251,20 @@ function TechniciansPage() {
                             );
                           })()}
                         </td>
-                        <td className="p-2">{t.cityOriginal ? formatAddressField(t.cityOriginal) : "—"}</td>
+                        <td className="p-2">
+                          {t.cityOriginal ? formatAddressField(t.cityOriginal) : "—"}
+                        </td>
                         <td className="p-2">{t.state ? formatAddressField(t.state) : "—"}</td>
                         <td className="p-2 max-w-48 truncate text-xs" title={t.address || ""}>
                           {t.address ? (
                             <span className="text-green-700 dark:text-green-400">{t.address}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-2 max-w-36 truncate text-xs" title={t.cnpj || ""}>
+                          {t.cnpj ? (
+                            <span>{t.cnpj}</span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -236,23 +288,29 @@ function TechniciansPage() {
           const { records, diagnostic } = buildTechnicians(rows, mapping, headerRow);
 
           const marcosBefore = records.filter((r) => r.firstName.toLowerCase() === "marcos");
-          console.log("[MARCOS] Antes do seed:", marcosBefore.map((m) => ({
-            name: m.nameOriginal,
-            firstName: m.firstName,
-            address: m.address,
-            addressLat: m.addressLat,
-            addressLng: m.addressLng,
-          })));
+          console.log(
+            "[MARCOS] Antes do seed:",
+            marcosBefore.map((m) => ({
+              name: m.nameOriginal,
+              firstName: m.firstName,
+              address: m.address,
+              addressLat: m.addressLat,
+              addressLng: m.addressLng,
+            })),
+          );
 
           const enriched = applySeedAddresses(records);
 
           const marcosAfter = enriched.filter((r) => r.firstName.toLowerCase() === "marcos");
-          console.log("[MARCOS] Depois do seed:", marcosAfter.map((m) => ({
-            name: m.nameOriginal,
-            address: m.address,
-            addressLat: m.addressLat,
-            addressLng: m.addressLng,
-          })));
+          console.log(
+            "[MARCOS] Depois do seed:",
+            marcosAfter.map((m) => ({
+              name: m.nameOriginal,
+              address: m.address,
+              addressLat: m.addressLat,
+              addressLng: m.addressLng,
+            })),
+          );
           store.setTechnicians(
             enriched,
             { fileName, count: enriched.length },
@@ -281,9 +339,7 @@ function TechniciansPage() {
               }
             }
             if (updated.length > 0) {
-              finalRecords = enriched.map(
-                (t) => updated.find((u) => u.id === t.id) || t,
-              );
+              finalRecords = enriched.map((t) => updated.find((u) => u.id === t.id) || t);
               store.setTechnicians(
                 finalRecords,
                 { fileName, count: finalRecords.length },
@@ -313,6 +369,8 @@ function TechniciansPage() {
           }
         }}
       />
+      <TecnicosCadastroDialog open={cadastroOpen} onOpenChange={setCadastroOpen} />
+      <TecnicosCrudDialog open={crudOpen} onOpenChange={setCrudOpen} />
     </div>
   );
 }

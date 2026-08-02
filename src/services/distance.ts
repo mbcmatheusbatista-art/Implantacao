@@ -266,6 +266,15 @@ export function getApproximateCoordinates(addressOrCity: string): { lat: number;
  */
 let lastPhotonCallFull = 0;
 export async function geocodeFullAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  // Remove acentos: endereços acentuados (ex.: "Álvaro") fazem o geocoder
+  // retornar 400/null, e qualificadores entre parênteses (ex.: "(Zona Leste)")
+  // também confundem o OSM. A query limpa resolve igual no mapa.
+  const cleanedAddress = address
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const now = Date.now();
   const elapsed = now - lastPhotonCallFull;
   if (elapsed < 1100) {
@@ -279,7 +288,7 @@ export async function geocodeFullAddress(address: string): Promise<{ lat: number
     const localResponse = await fetch("/api/geocode-fixed-address", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({ address: cleanedAddress }),
     });
     if (localResponse.ok) {
       const payload = (await localResponse.json()) as {
@@ -293,7 +302,7 @@ export async function geocodeFullAddress(address: string): Promise<{ lat: number
     }
 
     // Retained as a development fallback when the local API is unavailable.
-    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&countrycode=br&lang=pt`;
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(cleanedAddress)}&limit=1&countrycode=br&lang=pt`;
     const res = await fetch(url, {
       headers: {
         "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)",
@@ -307,6 +316,49 @@ export async function geocodeFullAddress(address: string): Promise<{ lat: number
     const coords = data.features?.[0]?.geometry?.coordinates;
     if (!coords) return null;
     return { lat: coords[1], lng: coords[0] };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reverse geocodificação via endereço estruturado (Nominatim/Photon via
+ * servidor). Quando o usuário ajusta o pino no mapa, o endereço textual novo
+ * alimenta o tooltip do ícone e a lista de técnicos.
+ */
+export interface ReverseGeocodedAddress {
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  uf?: string;
+  cep?: string;
+}
+
+export async function reverseGeocodeAddress(
+  lat: number,
+  lng: number,
+): Promise<ReverseGeocodedAddress | null> {
+  try {
+    const res = await fetch("/api/geocode-reverse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat, lng }),
+    });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as { address?: ReverseGeocodedAddress | string | null };
+    const address = payload.address;
+    if (address && typeof address === "object" && !("address" in (address as object))) {
+      return {
+        endereco: address.endereco !== undefined ? String(address.endereco) : undefined,
+        numero: address.numero !== undefined ? String(address.numero) : undefined,
+        bairro: address.bairro !== undefined ? String(address.bairro) : undefined,
+        cidade: address.cidade !== undefined ? String(address.cidade) : undefined,
+        uf: address.uf !== undefined ? String(address.uf) : undefined,
+        cep: address.cep !== undefined ? String(address.cep) : undefined,
+      };
+    }
+    return null;
   } catch {
     return null;
   }

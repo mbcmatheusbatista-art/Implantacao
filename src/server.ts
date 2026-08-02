@@ -108,6 +108,90 @@ async function photonReverseGeocode(lat: number, lng: number): Promise<string | 
 
 let lastNominatimCall = 0;
 
+const ESTADO_PARA_UF: Record<string, string> = {
+  "acre": "AC",
+  "alagoas": "AL",
+  "amapa": "AP",
+  "amazonas": "AM",
+  "bahia": "BA",
+  "ceara": "CE",
+  "distrito federal": "DF",
+  "espirito santo": "ES",
+  "goias": "GO",
+  "maranhao": "MA",
+  "mato grosso": "MT",
+  "mato grosso do sul": "MS",
+  "minas gerais": "MG",
+  "para": "PA",
+  "paraiba": "PB",
+  "parana": "PR",
+  "pernambuco": "PE",
+  "piaui": "PI",
+  "rio de janeiro": "RJ",
+  "rio grande do norte": "RN",
+  "rio grande do sul": "RS",
+  "rondonia": "RO",
+  "roraima": "RR",
+  "santa catarina": "SC",
+  "sao paulo": "SP",
+  "sergipe": "SE",
+  "tocantins": "TO",
+};
+
+function ufFromState(state: string | undefined): string | undefined {
+  if (!state) return undefined;
+  const normalized = state.trim().toLocaleLowerCase("pt-BR").split("-")[0].trim();
+  const matched = ESTADO_PARA_UF[normalized];
+  if (matched) return matched;
+  if (/^[A-Z]{2}$/.test(state.trim())) return state.trim().toUpperCase();
+  return undefined;
+}
+
+/** Nominatim (OSM), sem chave: reverse geocoding com endereço estruturado. */
+async function nominatimReverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<{ endereco: string; numero?: string; bairro?: string; cidade?: string; uf?: string; cep?: string } | null> {
+  const wait = Math.max(0, 1100 - (Date.now() - lastNominatimCall));
+  if (wait > 0) await sleep(wait);
+  lastNominatimCall = Date.now();
+
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=pt&addressdetails=1`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "creare-distribuicao/1.0 (support@lovable.dev)" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      address?: Record<string, string>;
+    };
+    const a = data.address;
+    if (!a) return null;
+    const endereco = a.road || a.pedestrian || a.footway || a.highway || a.building || "";
+    const numero = a.house_number || "";
+    const bairro = a.neighbourhood || a.suburb || a.quarter || "";
+    const cidade = a.city || a.town || a.village || a.municipality || "";
+    const uf = a.state || "";
+    const cep = a.postcode || "";
+    if (!endereco && !cidade && !uf) return null;
+    return {
+      endereco: String(endereco),
+      numero: numero ? String(numero) : undefined,
+      bairro: bairro ? String(bairro) : undefined,
+      cidade: cidade ? String(cidade) : undefined,
+      uf: ufFromState(uf),
+      cep: cep ? String(cep) : undefined,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Fallback gratuito: Nominatim, usado quando o Photon falha ou está fora do ar. */
 async function nominatimGeocode(query: string): Promise<{ lat: number; lng: number } | null> {
   const wait = Math.max(0, 1100 - (Date.now() - lastNominatimCall));
@@ -143,10 +227,24 @@ async function nominatimGeocode(query: string): Promise<{ lat: number; lng: numb
   }
 }
 
+// Remove acentos sem alterar a estrutura da query (mantém pontuação e
+// maiúsculas/minúsculas, que o OSM fórum). Alguns endereços com acentos (ex.:
+// "Álvaro") fazem o Photon/OSM retornar 400 ou null no cadastro.
+function stripAccents(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*\([^)]*\)\s*/g, " ") // remove "(Zona Leste)" etc. que confundem o OSM
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
   const key = query.toLocaleLowerCase("pt-BR");
   if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
-  const result = (await photonGeocode(query)) ?? (await nominatimGeocode(query));
+  // Remove acentos antes do geocode — resolve e unifica o endereço.
+  const cleaned = stripAccents(query);
+  const result = (await photonGeocode(cleaned)) ?? (await nominatimGeocode(cleaned));
   geocodeCache.set(key, result);
   return result;
 }
@@ -214,6 +312,10 @@ async function handleReverseGeocode(request: Request): Promise<Response> {
   const lng = typeof body.lng === "number" ? body.lng : Number(body.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return Response.json({ address: null }, { status: 400 });
+  }
+  const structured = await nominatimReverseGeocode(lat, lng);
+  if (structured) {
+    return Response.json({ address: structured });
   }
   const address = await photonReverseGeocode(lat, lng);
   return Response.json({ address });
